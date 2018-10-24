@@ -3,3 +3,5 @@ TBBT/
 *.pyc
 *.npy
 *.h5
+*.jpg
+*.png
