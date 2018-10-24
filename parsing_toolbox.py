@@ -1,5 +1,6 @@
 import numpy as np
 from nltk import sent_tokenize
+from encoding import one_hot_encoding
 
 SCENE = 0
 EPISODE = 1
@@ -61,7 +62,10 @@ def words_to_sentences(words):
 
     @return:
         list_sentences: list of list, text divided in sentences (each list being a sentence)
-        indexes_word2sentences: 1d ndarray, index of the list associated to each word of words
+        idx_word2sentences: 1d ndarray int of size n_words,
+                                index of the list associated to each word of words
+        idx_sentences2first_word: 1d ndarray int of size n_sentences,
+                                    index in words of the word of each sentence
 
     """
     n_words = len(words)
@@ -69,8 +73,10 @@ def words_to_sentences(words):
     list_sentences = list(sent_tokenize(text))
 
     current_idx_word = 0
-    indexes_word2sentences = np.zeros((n_words,))
+    idx_word2sentences = np.zeros((n_words,))
+    idx_sentences2first_word = np.zeros((len(list_sentences,)))
     for (i, sentence) in enumerate(list_sentences):
+        idx_sentences2first_word[i] = current_idx_word
         # We split again our sentence
         words_in_sentence = sentence.split(' ')
 
@@ -79,12 +85,12 @@ def words_to_sentences(words):
         for (j, w) in enumerate(words_in_sentence):
             # Sanity check, should always pass
             if w == words[current_idx_word]:
-                indexes_word2sentences[current_idx_word] = i
+                idx_word2sentences[current_idx_word] = i
                 current_idx_word += 1
             else:
                 print('error:', i, j, current_idx_word)
 
-    return list_sentences, indexes_word2sentences
+    return list_sentences, idx_word2sentences.astype(int), idx_sentences2first_word.astype(int)
 
 def load_sentences_persons(list_ep, states=PERSONS):
     """
@@ -95,9 +101,14 @@ def load_sentences_persons(list_ep, states=PERSONS):
     @return:
 
     """
-    # for ep in list_ep:
-    #     db = load_episode_db(ep)
-    #     sentences, indices = words_to_sentences(list(db[:, WORD]))
-    #     label_sentences = [db[indices]]
+    all_sentences_in_corpus, labels = [], []
+    for ep in list_ep:
+        db = load_episode_db(ep)
+        sentences, _, idx_s2w = words_to_sentences(list(db[:, WORD]))
+        label_sentences = np.array([db[i, PERSON] for i in idx_s2w])
+        label_sentences = np.argmax(one_hot_encoding(label_sentences, states), axis=1)
 
-    return list_ep
+        all_sentences_in_corpus += sentences
+        labels += list(label_sentences)
+
+    return np.array(all_sentences_in_corpus), np.array(labels)
