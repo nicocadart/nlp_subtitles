@@ -1,5 +1,5 @@
 import numpy as np
-
+from nltk import sent_tokenize
 
 SCENE = 0
 EPISODE = 1
@@ -10,6 +10,8 @@ WORD = 5
 PERSON = 8
 
 DB_DIR = 'data'
+PERSONS = ['howard_wolowitz', 'sheldon_cooper', 'leonard_hofstadter', 'penny',
+           'rajesh_koothrappali']
 
 
 def load_episode_db(episode):
@@ -83,3 +85,19 @@ def words_to_sentences(words):
                 print('error:', i, j, current_idx_word)
 
     return list_sentences, indexes_word2sentences
+
+def load_sentences_persons(list_ep, states=PERSONS):
+    """
+    @brief: load a list of episodes files, and create a database of the sentences,
+                associated with the labels being the person who said it
+    @param:
+
+    @return:
+
+    """
+    # for ep in list_ep:
+    #     db = load_episode_db(ep)
+    #     sentences, indices = words_to_sentences(list(db[:, WORD]))
+    #     label_sentences = [db[indices]]
+
+    return list_ep
