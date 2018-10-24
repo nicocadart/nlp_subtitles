@@ -48,3 +48,38 @@ def get_scenes_numbers(db):
     :return: list, the scenes numbers of the given db
     """
     return np.sort(np.unique(db[:, SCENE]).astype(np.float))
+
+
+def words_to_sentences(words):
+    """
+    @brief: takes a text as a list of words (or 1d ndarray) and return an list of sentences,
+            as well as the index of the corresponding sentences for each word (in 1d array)
+    @param:
+        words: list (or 1d array) of string, the list of words we want to sentence-tokenize
+
+    @return:
+        list_sentences: list of list, text divided in sentences (each list being a sentence)
+        indexes_word2sentences: 1d ndarray, index of the list associated to each word of words
+
+    """
+    n_words = len(words)
+    text = ' '.join(words)
+    list_sentences = list(sent_tokenize(text))
+
+    current_idx_word = 0
+    indexes_word2sentences = np.zeros((n_words,))
+    for (i, sentence) in enumerate(list_sentences):
+        # We split again our sentence
+        words_in_sentence = sentence.split(' ')
+
+        # for each word of the current sentence, match the correct word in words list and increment
+        # the index of the words we're tagging
+        for (j, w) in enumerate(words_in_sentence):
+            # Sanity check, should always pass
+            if w == words[current_idx_word]:
+                indexes_word2sentences[current_idx_word] = i
+                current_idx_word += 1
+            else:
+                print('error:', i, j, current_idx_word)
+
+    return list_sentences, indexes_word2sentences
