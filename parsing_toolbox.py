@@ -55,7 +55,7 @@ def get_scenes_numbers(db):
 
 def words_to_sentences(words):
     """
-    @brief: takes a text as a list of words (or 1d ndarray) and return an list of sentences,
+    @brief: takes a text as a list of words (or 1d ndarray) and return a list of sentences,
             as well as the index of the corresponding sentences for each word (in 1d array)
     @param:
         words: list (or 1d array) of string, the list of words we want to sentence-tokenize

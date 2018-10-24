@@ -2,3 +2,4 @@ data/
 TBBT/
 *.pyc
 *.npy
+.idea/*
