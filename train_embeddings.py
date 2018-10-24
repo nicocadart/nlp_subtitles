@@ -6,24 +6,26 @@ from keras.layers import Embedding, Flatten, Dense
 from sklearn.model_selection import train_test_split
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
+from parsing_toolbox import load_sentences_persons
+from keras.utils import to_categorical
 
-EPISODES = list(range(11))
+
+EPISODES_LEARN = [1, 2, 3, 4, 5, 6, 7, 8]
+EPISODES_TEST = [9, 10, 11, 12]
+PERSONS = ['howard_wolowitz', 'sheldon_cooper', 'leonard_hofstadter', 'penny',
+           'rajesh_koothrappali']
 GLOVE_DIR = 'data/'
 EMBEDDING_DIM = 100
 
-## TODO: Loading data, as a list of texts (sentences), and the according labels
+sentences, labels = load_sentences_persons(EPISODES_LEARN, states=PERSONS)
 
-
-
-maxlen = 100  # We will cut reviews after 100 words
-training_samples = 200  # We will be training on 200 samples
-validation_samples = 10000  # We will be validating on 10000 samples
+maxlen = 500  # We will cut sentence after 461 words (max is 461))
 max_words = 10000  # We will only consider the top 10,000 words in the dataset
 
 # HERE texts are a list of sentences
 tokenizer = Tokenizer(num_words=max_words)
-tokenizer.fit_on_texts(texts)
-# sequences = tokenizer.texts_to_sequences(texts)
+tokenizer.fit_on_texts(sentences)
+sequences = tokenizer.texts_to_sequences(sentences)
 
 word_index = tokenizer.word_index
 print('Found %s unique tokens.' % len(word_index))
@@ -41,13 +43,19 @@ indices = np.arange(data.shape[0])
 np.random.shuffle(indices)
 data = data[indices]
 labels = labels[indices]
+labels = to_categorical(labels)
 
-x_train = data[:training_samples]
-y_train = labels[:training_samples]
-x_val = data[training_samples: training_samples + validation_samples]
-y_val = labels[training_samples: training_samples + validation_samples]
+n_classes = len(PERSONS) + 1
+n_samples = len(data)
+
+x_train = data[:round(0.8*n_samples)]
+y_train = labels[:round(0.8*n_samples)]
+x_val = data[round(0.8*n_samples):]
+y_val = labels[round(0.8*n_samples):]
+
 # Loading pre-embedding data
 embeddings_index = {}
+# WARNING watch the embedding dim
 f = open(os.path.join(GLOVE_DIR, 'glove.6B.100d.txt'))
 for line in f:
     values = line.split()
@@ -69,10 +77,16 @@ for word, i in word_index.items():
 
 
 model = Sequential()
-model.add(Embedding(max_words, embedding_dim, input_length=maxlen))
+model.add(Embedding(max_words, EMBEDDING_DIM, input_length=maxlen))
 model.add(Flatten())
+#model.add(Dense(10000, activation='relu'))
+#model.add(Dense(5000, activation='relu'))
+#model.add(Dense(1000, activation='relu'))
+#model.add(Dense(2048, activation='relu'))
+model.add(Dense(512, activation='relu'))
+model.add(Dense(128, activation='relu'))
 model.add(Dense(32, activation='relu'))
-model.add(Dense(1, activation='sigmoid'))
+model.add(Dense(n_classes, activation='sigmoid'))
 model.summary()
 model.layers[0].set_weights([embedding_matrix])
 model.layers[0].trainable = False
@@ -107,3 +121,13 @@ plt.title('Training and validation loss')
 plt.legend()
 
 plt.show()
+
+sentences_test, labels_test = load_sentences_persons(EPISODES_TEST)
+
+sequences_test = tokenizer.texts_to_sequences(sentences_test)
+x_test = pad_sequences(sequences_test, maxlen=maxlen)
+y_test = np.asarray(labels_test)
+y_test = to_categorical(y_test)
+
+model.load_weights('pre_trained_glove_model.h5')
+print(model.evaluate(x_test, y_test))
