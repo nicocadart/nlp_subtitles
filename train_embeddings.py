@@ -9,17 +9,23 @@ from keras.preprocessing.text import Tokenizer
 from parsing_toolbox import load_sentences_persons
 from keras.utils import to_categorical
 
+################################
+######## CONSTANTS
 
+# id of episodes we use for learn, test
 EPISODES_LEARN = [1, 2, 3, 4, 5, 6, 7, 8]
 EPISODES_TEST = [9, 10, 11, 12]
+# Name of the persons we want to detect (+ state 'unknown')
 PERSONS = ['howard_wolowitz', 'sheldon_cooper', 'leonard_hofstadter', 'penny',
            'rajesh_koothrappali']
+# Dir for embeddings data
 GLOVE_DIR = 'data/'
+# Size of embedding space
 EMBEDDING_DIM = 300
 
 sentences, labels, _, _ = load_sentences_persons(EPISODES_LEARN, states=PERSONS)
 
-maxlen = 500  # We will cut sentence after 461 words (max is 461))
+maxlen = 500  # We will cut sentence after 500 words (max is 461))
 max_words = 10000  # We will only consider the top 10,000 words in the dataset
 
 # HERE texts are a list of sentences
