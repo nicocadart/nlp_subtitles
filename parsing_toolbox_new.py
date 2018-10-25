@@ -46,6 +46,7 @@ def get_persons_scenes(db):
 
     for db_entry in db:
 
+        # if new scene
         if db_entry[SCENE_ID] != current_scene_id:
             if current_scene_id != "x":
                 persons.append(list(current_scene_persons))
@@ -55,8 +56,14 @@ def get_persons_scenes(db):
             current_scene_persons = set()
             current_scene_text = ""
 
+        # if same scene
         current_scene_persons.add(db_entry[PERSON])
         current_scene_text += db_entry[SENTENCE]
+
+    # don't forget to add last scene
+    persons.append(list(current_scene_persons))
+    text.append(current_scene_text)
+    scene_ids.append(current_scene_id)
 
     return persons, text, scene_ids
 
