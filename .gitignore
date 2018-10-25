@@ -6,3 +6,4 @@ TBBT/
 *.jpg
 *.png
 .ipynb_checkpoints/
+.idea/*
