@@ -35,9 +35,9 @@ def get_persons_scenes(db):
     """
     persons = []
     text = []
+    scene_ids = []
 
     current_scene_id = 'x'
-
     current_scene_persons = set()
     current_scene_text = ""
 
@@ -47,6 +47,7 @@ def get_persons_scenes(db):
             if current_scene_id != "x":
                 persons.append(list(current_scene_persons))
                 text.append(current_scene_text)
+                scene_ids.append(current_scene_id)
             current_scene_id = db_entry[SCENE_ID]
             current_scene_persons = set()
             current_scene_text = ""
@@ -54,7 +55,7 @@ def get_persons_scenes(db):
         current_scene_persons.add(db_entry[PERSON])
         current_scene_text += db_entry[SENTENCE]
 
-    return persons, text
+    return persons, text, scene_ids
 
 
 def load_sentences_by_person(states=PERSONS):
