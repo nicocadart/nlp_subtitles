@@ -1,5 +1,7 @@
 import os
+import csv
 import numpy as np
+import matplotlib.pyplot as plt
 from keras.preprocessing.text import Tokenizer
 from keras.models import Sequential
 from keras.layers import Embedding, Flatten, Dense
@@ -108,3 +110,94 @@ def create_conv_model(max_words, embedding_dim, maxlen, embedding_matrix, n_clas
                   loss='categorical_crossentropy',
                   metrics=['acc'])
     return model
+
+
+def train_model(model, x_train, y_train, x_val, y_val, epochs=4,
+                plot=True, savepath='pre_trained_glove_model.h5'):
+
+    history = model.fit(x_train, y_train,
+                        epochs=4,
+                        batch_size=32,
+                        validation_data=(x_val, y_val),
+                        verbose=1)
+    if savepath is not None:
+        model.save_weights(savepath)
+
+    if plot:
+        ## Plot train, validation accuracy and loss
+        acc = history.history['acc']
+        val_acc = history.history['val_acc']
+        loss = history.history['loss']
+        val_loss = history.history['val_loss']
+
+        epochs = range(1, len(acc) + 1)
+
+        plt.plot(epochs, acc, 'bo', label='Training acc')
+        plt.plot(epochs, val_acc, 'b', label='Validation acc')
+        plt.title('Training and validation accuracy')
+        plt.legend()
+
+        plt.figure()
+
+        plt.plot(epochs, loss, 'bo', label='Training loss')
+        plt.plot(epochs, val_loss, 'b', label='Validation loss')
+        plt.title('Training and validation loss')
+        plt.legend()
+
+        plt.show()
+        return 0
+
+
+def test_model(model, x_test, y_test, id_test, n_classes, states,
+               threshold_prediction = 0.02,
+               loadpath='pre_trained_glove_model.h5',
+               savepath='data/prediction_embeddings_test.csv'):
+
+    model.load_weights(loadpath)
+    confusion_per_character = np.zeros((n_classes, 2, 2))
+    unique_id_test = np.unique(id_test)
+
+
+    with open(savepath, "w", newline='') as csvfile:
+        writer = csv.writer(csvfile, delimiter=';')
+        writer.writerow(['id_scene'] + states + states)
+
+        for id_sc in unique_id_test:
+            # print('ID SCENE: {}'.format(id_sc))
+            idx_scene = (id_test == id_sc)
+            x_scene = x_test[idx_scene]
+            y_scene = y_test[idx_scene]
+
+            predict_scene_by_sentence = np.array(model.predict(x_scene))
+            predict_scene = np.sum(predict_scene_by_sentence, axis=0)/predict_scene_by_sentence.shape[0]
+
+            truth_class = np.unique(np.argmax(y_scene, axis=1))
+            truth_array = np.zeros((n_classes,))
+            truth_array[truth_class] = 1
+
+            row = [id_sc] + list(truth_array) + list(predict_scene)
+            writer.writerow(row)
+
+            predict_class = predict_scene[predict_scene > threshold_prediction].argsort()
+
+            # print(truth_class)
+            # print(predict_class)
+
+            for character in range(n_classes):
+                if character in truth_class and character in predict_class:
+                    confusion_per_character[character, 0, 0] += 1
+                elif character in truth_class and character not in predict_class:
+                    confusion_per_character[character, 0, 1] += 1
+                elif character not in truth_class and character in predict_class:
+                    confusion_per_character[character, 1, 0] += 1
+                elif character not in truth_class and character not in predict_class:
+                    confusion_per_character[character, 1, 1] += 1
+
+    print('ACCURACY')
+    for character in range(n_classes):
+        m_confusion = confusion_per_character[character, :, :]
+        print('{}: {:.4f}\n Confusion matrix: {}'.format(states[character],
+                                                         (m_confusion[0, 0]+\
+                                                          m_confusion[1, 1])/m_confusion.sum(),
+                                                         m_confusion))
+    return confusion_per_character
