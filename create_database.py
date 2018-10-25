@@ -20,7 +20,7 @@ NEW_SCENE = "Scene"
 
 if __name__ == "__main__":
 
-    db_full = DB_COLUMNS
+    db_full = []
 
     # loop over seasons
     seasons_dir = [f for f in listdir(SUBTITLES_DIR) if isdir(join(SUBTITLES_DIR, f))]
