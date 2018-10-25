@@ -39,6 +39,7 @@ data = pad_sequences(sequences, maxlen=MAXLEN)
 
 labels = np.asarray(labels)
 id_scene = np.asarray(id_scene)
+labels = to_categorical(labels)
 
 print('Shape of data tensor:', data.shape)
 print('Shape of label tensor:', labels.shape)
@@ -52,8 +53,6 @@ if RANDOM_SPLIT:
     data = data[indices]
     labels = labels[indices]
     id_scene = id_scene[indices]
-
-    labels = to_categorical(labels)
 
     n_classes = len(PERSONS) + 1
     n_samples = len(data)
@@ -72,19 +71,20 @@ if RANDOM_SPLIT:
     id_test = id_scene[int_val:]
 
 else:
+    n_classes = len(PERSONS) + 1
 
     t_v_t_scene_indices = np.load('train_test_split_scenes_indices.npy')
     train, val, test = t_v_t_scene_indices[0], t_v_t_scene_indices[1], t_v_t_scene_indices[2]
 
-    x_train = data[id_scene == train]
-    y_train = labels[id_scene == train]
+    x_train = data[np.isin(id_scene, train)]
+    y_train = labels[np.isin(id_scene, train)]
 
-    x_val = data[id_scene == val]
-    y_val = labels[id_scene == val]
+    x_val = data[np.isin(id_scene, val)]
+    y_val = labels[np.isin(id_scene, val)]
 
-    x_test = data[id_scene == test]
-    y_test = labels[id_scene == test]
-    id_test = id_scene[id_scene == test]
+    x_test = data[np.isin(id_scene, test)]
+    y_test = labels[np.isin(id_scene, test)]
+    id_test = id_scene[np.isin(id_scene, test)]
 
 
 
