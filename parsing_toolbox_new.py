@@ -60,7 +60,7 @@ def get_persons_scenes(db):
     return persons, text
 
 
-def load_sentences_by_person(states=PERSONS):
+def load_sentences_by_person(states=PERSONS, filter=False):
     """
     @brief: load a list of episodes files, and create a database of the sentences,
                 associated with the labels being the person who said it
