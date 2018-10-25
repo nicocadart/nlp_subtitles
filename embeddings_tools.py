@@ -116,7 +116,7 @@ def train_model(model, x_train, y_train, x_val, y_val, epochs=4,
                 plot=True, savepath='pre_trained_glove_model.h5'):
 
     history = model.fit(x_train, y_train,
-                        epochs=4,
+                        epochs=epochs,
                         batch_size=32,
                         validation_data=(x_val, y_val),
                         verbose=1)
