@@ -5,3 +5,4 @@ TBBT/
 *.h5
 *.jpg
 *.png
+.ipynb_checkpoints/
