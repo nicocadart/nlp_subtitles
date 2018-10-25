@@ -101,14 +101,18 @@ def load_sentences_persons(list_ep, states=PERSONS):
     @return:
 
     """
-    all_sentences_in_corpus, labels = [], []
+    all_sentences_in_corpus, labels, n_episode, n_scene = [], [], [], []
     for ep in list_ep:
         db = load_episode_db(ep)
         sentences, _, idx_s2w = words_to_sentences(list(db[:, WORD]))
         label_sentences = np.array([db[i, PERSON] for i in idx_s2w])
         label_sentences = np.argmax(one_hot_encoding(label_sentences, states), axis=1)
+        episode_sentences = list(ep*np.ones((len(sentences),)))
+        scene_sentences = np.array([db[i, SCENE] for i in idx_s2w])
 
         all_sentences_in_corpus += sentences
         labels += list(label_sentences)
+        n_episode += episode_sentences
+        n_scene += list(scene_sentences)
 
-    return np.array(all_sentences_in_corpus), np.array(labels)
+    return np.array(all_sentences_in_corpus), np.array(labels), n_episode, n_scene
