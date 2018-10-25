@@ -2,4 +2,8 @@ data/
 TBBT/
 *.pyc
 *.npy
+*.h5
+*.jpg
+*.png
+.ipynb_checkpoints/
 .idea/*
