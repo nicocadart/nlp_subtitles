@@ -1,22 +1,12 @@
-import numpy as np
 import csv
 from os import listdir
 from os.path import isfile, join, isdir
 
-# SUBTITLES_DIR = "TBBT_old/NE_1st2nd3rd"
-# SCENES_DIR    = "TBBT_old/scenes"
-# DATABSE_PATH  = 'data/tbbt_db.npy'
-#
-# SUBTITLES_COLUMNS = ['episode_name', 'season', 'time', 'duration', 'word', 'alignement_confidence', 'data_type', 'locutor', 'type_EN', 'name_EN', 'role_EN']
-# SCENES_COLUMNS = ['scene', 'begin', 'end']
-# DB_COLUMNS = ['season', 'episode', 'scene', 'scene_id', 'time', 'duration', 'word', 'locutor']
-
 SUBTITLES_DIR = "TBBT/transcripts"
 DATABASE_PATH  = 'data/tbbt_db.csv'
 
-DB_COLUMNS = ['season', 'episode', 'scene', 'scene_id', 'word', 'locutor']
-
 NEW_SCENE = "Scene"
+DELIMITER = '§'
 
 if __name__ == "__main__":
 
@@ -61,6 +51,6 @@ if __name__ == "__main__":
 
     # write database
     with open(DATABASE_PATH, "w", newline='') as csvfile:
-        writer = csv.writer(csvfile, delimiter='§')
+        writer = csv.writer(csvfile, delimiter=DELIMITER)
         for row in db_full:
             writer.writerow(row)
