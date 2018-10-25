@@ -1,5 +1,6 @@
 data/
 TBBT/
+TBBT_v0/
 *.pyc
 *.npy
 *.h5

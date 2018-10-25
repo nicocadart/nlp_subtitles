@@ -23,6 +23,10 @@ GLOVE_DIR = 'data/'
 # Size of embedding space
 EMBEDDING_DIM = 300
 
+
+################################
+######## LOADING DATA FOR TRAIN
+
 sentences, labels, _, _ = load_sentences_persons(EPISODES_LEARN, states=PERSONS)
 
 maxlen = 500  # We will cut sentence after 500 words (max is 461))

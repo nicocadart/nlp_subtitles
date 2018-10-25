@@ -18,4 +18,3 @@ def load_db():
     with open(DATABASE_PATH, "r", newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter='§')
         return list(reader)
-
