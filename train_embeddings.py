@@ -1,7 +1,7 @@
 import numpy as np
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
-from parsing_toolbox_new import load_sentences_by_person
+from parsing_toolbox_new import load_sentences_by_person, PERSONS, UNKNOWN_STATE
 from embeddings_tools import tokenize_corpus, compute_embedding_weights, train_model, test_model
 from embeddings_tools import create_simple_model, create_conv_model
 
@@ -9,8 +9,7 @@ from embeddings_tools import create_simple_model, create_conv_model
 ################################
 ######## CONSTANTS
 # Characters we want to detect
-PERSONS = ['Sheldon', 'Leonard', 'Penny', 'Raj', 'Howard']
-STATES = PERSONS + ['Unknown']
+STATES = PERSONS + UNKNOWN_STATE
 # Dir for embeddings data
 GLOVE_DIR = 'data/'
 
