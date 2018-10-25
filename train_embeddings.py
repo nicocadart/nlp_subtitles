@@ -21,7 +21,7 @@ TRAIN_VALID_TEST_RATIO = (0.8, 0.1, 0.1)
 MAXLEN = 250  # We will cut sentence after 250 words (max is 202))
 MAX_WORDS = 10000  # We will only consider the top 10,000 words in the dataset
 
-TRAIN = False # Launch a training on the data. If false, load latest trained model
+TRAIN = True # Launch a training on the data. If false, load latest trained model
 
 ################################
 ######## LOADING DATA FOR TRAIN
@@ -86,7 +86,7 @@ model = create_simple_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, 
 
 if TRAIN:
     # Train Model
-    train_model(model, x_train, y_train, x_val, y_val)
+    train_model(model, x_train, y_train, x_val, y_val, epochs=10)
 
 ############################################
 ######## TEST ACCURACY PER CHARACTER
