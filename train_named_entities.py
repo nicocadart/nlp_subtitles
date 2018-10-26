@@ -178,7 +178,7 @@ def get_train_test_ne_persons_dataset(named_entities, persons, scene_ids, train_
 
 if __name__=="__main__":
     # params
-    min_count = 30
+    min_count = 5
     once = False
 
     # =================================================================
@@ -211,6 +211,11 @@ if __name__=="__main__":
                                                                                                                            scene_ids,
                                                                                                                            possible_locutors=possible_locutors)
 
+    print("Dimensions of datasets :")
+    print(" * train : {}".format(X_train.shape))
+    print(" * valid : {}".format(X_valid.shape))
+    print(" * test  : {}".format(X_test.shape))
+
     # =================================================================
     #                      TRAIN CLASSIFIERS
     # =================================================================
@@ -224,13 +229,16 @@ if __name__=="__main__":
         # -------------------
         #  Init classifiers
         # -------------------
-        clfs_names = ['SVM', 'LogisticRegression', 'DecisionTreeClassifier', 'RandomForestClassifier', 'MLPClassifier']
+        clfs_names = ['SVM linear', 'SVM poly', 'SVM rbf', 'LogisticRegression', 'DecisionTreeClassifier', 'RandomForestClassifier', 'RandomForestClassifier', 'MLPClassifier']
         clfs = []
         clfs.append(SVC(kernel='linear', probability=True))
+        clfs.append(SVC(kernel='poly', probability=True))
+        clfs.append(SVC(kernel='rbf', probability=True))
         clfs.append(LogisticRegression())
         clfs.append(DecisionTreeClassifier(max_depth=15))
-        clfs.append(RandomForestClassifier())
-        clfs.append(MLPClassifier(hidden_layer_sizes=(20, 6), activation='logistic', max_iter=300))
+        clfs.append(RandomForestClassifier(n_estimators=20, random_state=1337))
+        clfs.append(RandomForestClassifier(n_estimators=10, random_state=4141))
+        clfs.append(MLPClassifier(hidden_layer_sizes=(50, 25, 5), activation='logistic', max_iter=300))
 
         # -------------------
         #  Train classifiers
@@ -260,25 +268,32 @@ if __name__=="__main__":
             for weight, prediction in zip(weights, y_proba_pred):
                 final_prediction += weight * prediction
             return log_loss(y_valid[person], final_prediction)
+        def error_rate_func(weights):
+            ''' scipy minimize will pass the weights as a numpy array '''
+            final_prediction = 0
+            for weight, prediction in zip(weights, y_proba_pred):
+                final_prediction += weight * prediction
+            return 1 - accuracy_score(y_test[person], np.argmax(final_prediction, axis=1))
 
         # minimize weights
-        init_weights = np.ones((len(y_proba_pred),)) / len(y_proba_pred)
+        init_weights = np.random.uniform(0.3, 0.7, (len(y_proba_pred),))
+        init_weights /= np.sum(init_weights)
         # adding constraints  and a different solver as suggested by user 16universe
         # https://kaggle2.blob.core.windows.net/forum-message-attachments/75655/2393/otto%20model%20weights.pdf?sv=2012-02-12&se=2015-05-03T21%3A22%3A17Z&sr=b&sp=r&sig=rkeA7EJC%2BiQ%2FJ%2BcMpcA4lYQLFh6ubNqs2XAkGtFsAv0%3D
         constraint = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
         # our weights are bound between 0 and 1
-        bounds = [(0, 1)] * len(y_proba_pred)
+        bounds = [(0, None)] * len(y_proba_pred)
         # get best weights
         res = minimize(log_loss_func, init_weights, method='SLSQP', bounds=bounds, constraints=constraint)
         EL_weights = res['x']
         # print results
-        print("   > Best Weights           : {}".format(EL_weights))
-        print("   > Initial ensamble Score : {}".format(log_loss_func(EL_weights)))
-        print("   > Final ensamble Score   : {}".format(res['fun']))
+        print("   > Best Weights     : {}".format(np.round(EL_weights, 3)))
+        print("   > Initial log-loss : {}".format(log_loss_func(init_weights)))
+        print("   > Final log-loss   : {}".format(res['fun']))
 
-        # --------------------------------
-        #  Find ensamble learning weights
-        # --------------------------------
+        # ---------------
+        #  Print results
+        # ---------------
         # predict proba
         y_pred_p = np.zeros((len(y_test[person]), 2))
         for i_clf, clf in enumerate(clfs):
