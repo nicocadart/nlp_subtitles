@@ -1,8 +1,6 @@
-data/
 TBBT/
-TBBT_v0/
+*.csv
 *.pyc
-*.npy
 *.h5
 *.jpg
 *.png

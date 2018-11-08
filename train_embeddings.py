@@ -2,8 +2,8 @@ import numpy as np
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
 from parsing_toolbox import load_sentences_by_person, PERSONS, UNKNOWN_STATE
-from embeddings_tools import tokenize_corpus, compute_embedding_weights, train_model, test_model
-from embeddings_tools import create_simple_model, create_conv_model
+from embeddings_toolbox import tokenize_corpus, compute_embedding_weights, train_model, test_model
+from embeddings_toolbox import create_simple_model, create_conv_model
 
 
 ################################
@@ -12,6 +12,9 @@ from embeddings_tools import create_simple_model, create_conv_model
 STATES = PERSONS + UNKNOWN_STATE
 # Dir for embeddings data
 GLOVE_DIR = 'data/'
+GLOVE_PATH = 'data/pre_trained_glove_model.h5'
+INDEX_SETS_PATH = "data/train_test_split_scenes_indices.npy"
+OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
 
 # Size of embedding space
 EMBEDDING_DIM = 100
@@ -72,7 +75,7 @@ if RANDOM_SPLIT:
 else:
     n_classes = len(PERSONS) + 1
 
-    t_v_t_scene_indices = np.load('train_test_split_scenes_indices.npy')
+    t_v_t_scene_indices = np.load(INDEX_SETS_PATH)
     train, val, test = t_v_t_scene_indices[0], t_v_t_scene_indices[1], t_v_t_scene_indices[2]
 
     x_train = data[np.isin(id_scene, train)]
@@ -110,5 +113,5 @@ if TRAIN:
 
 test_model(model, x_test, y_test, id_test, n_classes, states=STATES,
            threshold_prediction=0.02,
-           loadpath='pre_trained_glove_model.h5',
-           savepath='data/prediction_embeddings_test.csv')
+           loadpath=GLOVE_PATH,
+           savepath=OUTPUT_PREDICTIONS_PATH)

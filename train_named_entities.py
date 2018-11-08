@@ -15,8 +15,8 @@ from parsing_toolbox import *
 from encoding import *
 
 
-INDEX_SETS_PATH = "train_test_split_scenes_indices.npy"
-PERSONS_NE_DB = "data/persons_ne.csv"
+INDEX_SETS_PATH = "data/train_test_split_scenes_indices.npy"
+PERSONS_NE_DB = "data/persons_ne_db.csv"
 TEST_RESULTS_PATH = "data/prediction_named_entities_test.csv"
 
 
@@ -104,7 +104,7 @@ def load_ne_persons_dataset():
 
         # write dataset for future executions
         print("Saving named entities dataset to file \'{}\'".format(PERSONS_NE_DB))
-        with open("data/persons_ne.csv", "w", newline='') as csvfile:
+        with open(PERSONS_NE_DB, "w", newline='') as csvfile:
             writer = csv.writer(csvfile, delimiter='§')
             for scene_id, ne, locutors in zip(scene_ids, named_entities, persons):
                 ne_str = "|".join(ne)
@@ -115,6 +115,11 @@ def load_ne_persons_dataset():
 
 
 def clean_ne_persons_dataset(named_entities, persons, min_ne_count=5, states=PERSONS, unknown_state=UNKNOWN_STATE, once=False):
+    """
+    Filter data by selecting only named entities occuring more than "min_ne_count", and replacing all states which are
+    not in "states" by "unknown_state". If "once" is set to True, only one occurence of each NE in each scene will be
+    kept.
+    """
     ne_count = Counter([ne for ne_scene in named_entities for ne in ne_scene])
     ne_vocab = {ne for ne, count in ne_count.items() if count >= min_ne_count}
 
@@ -162,10 +167,6 @@ def get_train_test_ne_persons_dataset(named_entities, persons, scene_ids, train_
     X_valid = X[np.isin(scene_ids, valid_ids), :]
     X_test  = X[np.isin(scene_ids, test_ids),  :]
 
-    for idx in test_ids:
-        if idx not in scene_ids:
-            print(idx)
-
     # build y : one hot encoded persons
     y_train, y_valid, y_test = {}, {}, {}
     for person in possible_locutors:
@@ -188,13 +189,11 @@ if __name__=="__main__":
     # Load dataset
     named_entities_full, persons_full, scene_ids = load_ne_persons_dataset()
 
-    # for min_count in [30]:
-
-    print("Cleaning dataset with min_ne_count = {}".format(min_count))
-
     # Clean dataset :
     #   - replace all occurences of unkown characters by UNKOWN_STATE
     #   - remove named_entities counted less than 'min_count' times
+    #   - keep only a single occurence of each NE in each scene if "once" is True
+    print("Cleaning dataset with min_ne_count = {}".format(min_count))
     named_entities, persons = clean_ne_persons_dataset(named_entities_full,
                                                        persons_full,
                                                        min_ne_count=min_count,

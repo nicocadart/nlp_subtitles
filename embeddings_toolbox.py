@@ -7,6 +7,9 @@ from keras.models import Sequential
 from keras.layers import Embedding, Flatten, Dense
 from keras.layers import Conv2D, Conv1D
 
+GLOVE_PATH = 'data/pre_trained_glove_model.h5'
+OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
+
 def tokenize_corpus(sentences, num_words):
 
     tokenizer = Tokenizer(num_words=num_words)
@@ -113,7 +116,7 @@ def create_conv_model(max_words, embedding_dim, maxlen, embedding_matrix, n_clas
 
 
 def train_model(model, x_train, y_train, x_val, y_val, epochs=4,
-                plot=True, savepath='pre_trained_glove_model.h5'):
+                plot=True, savepath=GLOVE_PATH):
 
     history = model.fit(x_train, y_train,
                         epochs=epochs,
@@ -150,8 +153,8 @@ def train_model(model, x_train, y_train, x_val, y_val, epochs=4,
 
 def test_model(model, x_test, y_test, id_test, n_classes, states,
                threshold_prediction = 0.02,
-               loadpath='pre_trained_glove_model.h5',
-               savepath='data/prediction_embeddings_test.csv'):
+               loadpath=GLOVE_PATH,
+               savepath=OUTPUT_PREDICTIONS_PATH):
 
     model.load_weights(loadpath)
     confusion_per_character = np.zeros((n_classes, 2, 2))

@@ -3,7 +3,7 @@ from parsing_toolbox import load_db, SCENE_ID
 
 RANDOM_SEED = 42
 TRAIN_VALID_TEST_RATIO = (0.7, 0.15, 0.15)
-OUTPUT_FILE_PATH = "train_test_split_scenes_indices.npy"
+OUTPUT_FILE_PATH = "data/train_test_split_scenes_indices.npy"
 
 
 if __name__ == "__main__":
@@ -29,4 +29,4 @@ if __name__ == "__main__":
     test_scenes_ids  = scene_ids[valid_index:]
 
     # save datasets
-    np.save("train_test_split_scenes_indices.npy", [train_scenes_ids, valid_scenes_ids, test_scenes_ids])
+    np.save(OUTPUT_FILE_PATH, [train_scenes_ids, valid_scenes_ids, test_scenes_ids])
