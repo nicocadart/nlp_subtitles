@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, log_loss
 
-from parsing_toolbox_new import *
+from parsing_toolbox import *
 from encoding import *
 
 

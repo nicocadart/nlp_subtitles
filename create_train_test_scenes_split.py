@@ -1,5 +1,5 @@
 import numpy as np
-from parsing_toolbox_new import load_db, SCENE_ID
+from parsing_toolbox import load_db, SCENE_ID
 
 RANDOM_SEED = 42
 TRAIN_VALID_TEST_RATIO = (0.7, 0.15, 0.15)

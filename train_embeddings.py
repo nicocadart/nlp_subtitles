@@ -1,7 +1,7 @@
 import numpy as np
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
-from parsing_toolbox_new import load_sentences_by_person, PERSONS, UNKNOWN_STATE
+from parsing_toolbox import load_sentences_by_person, PERSONS, UNKNOWN_STATE
 from embeddings_tools import tokenize_corpus, compute_embedding_weights, train_model, test_model
 from embeddings_tools import create_simple_model, create_conv_model
 
