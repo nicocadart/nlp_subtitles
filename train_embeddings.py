@@ -9,7 +9,7 @@ from embeddings_toolbox import create_simple_model, create_conv_model
 ################################
 ######## CONSTANTS
 # Characters we want to detect
-STATES = PERSONS + UNKNOWN_STATE
+STATES = PERSONS + [UNKNOWN_STATE]
 # Dir for embeddings data
 GLOVE_DIR = 'data/'
 GLOVE_PATH = 'data/pre_trained_glove_model.h5'
@@ -23,7 +23,7 @@ RANDOM_SPLIT = False
 MAXLEN = 250  # We will cut sentence after 250 words (max is 202))
 MAX_WORDS = 10000  # We will only consider the top 10,000 words in the dataset
 
-TRAIN = False # Launch a training on the data. If false, load latest trained model
+TRAIN = True # Launch a training on the data. If false, load latest trained model
 
 ################################
 ######## LOADING DATA FOR TRAIN

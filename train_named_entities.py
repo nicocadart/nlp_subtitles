@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize
+import csv
 
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.svm import SVC
@@ -13,7 +14,7 @@ from parsing_toolbox import PERSONS, UNKNOWN_STATE
 from named_entities_toolbox import get_train_test_ne_persons_dataset
 
 
-TEST_RESULTS_PATH = "data/prediction_named_entities_test.csv"
+TEST_RESULTS_PATH = "data/prediction_ne_test.csv"
 
 
 if __name__=="__main__":
@@ -22,10 +23,11 @@ if __name__=="__main__":
     #                         LOAD DATASET
     # =================================================================
 
-    min_count = 5
+    min_count = 10
     once = False
     possible_locutors = PERSONS + [UNKNOWN_STATE]
-    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = get_train_test_ne_persons_dataset(possible_locutors, ne_min_count=10, once=False)
+    ne_dataset = get_train_test_ne_persons_dataset(possible_locutors, ne_min_count=min_count, once=once)
+    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = ne_dataset
 
     print("Dimensions of datasets :")
     print(" * train : {}".format(X_train.shape))
@@ -45,16 +47,32 @@ if __name__=="__main__":
         # -------------------
         #  Init classifiers
         # -------------------
-        clfs_names = ['SVM linear', 'SVM poly', 'SVM rbf', 'LogisticRegression', 'DecisionTreeClassifier', 'RandomForestClassifier', 'RandomForestClassifier', 'MLPClassifier']
+        clfs_names = []
         clfs = []
-        clfs.append(SVC(kernel='linear', probability=True))
-        clfs.append(SVC(kernel='poly', probability=True))
-        clfs.append(SVC(kernel='rbf', probability=True))
+
+        clfs_names.append('SVM linear')
+        clfs.append(SVC(kernel='linear', C=1 ,probability=True))
+
+        clfs_names.append('SVM poly')
+        clfs.append(SVC(kernel='poly', C=1, probability=True))
+
+        clfs_names.append('SVM rbf')
+        clfs.append(SVC(kernel='rbf', C=1, probability=True))
+
+        clfs_names.append('LogisticRegression')
         clfs.append(LogisticRegression())
-        clfs.append(DecisionTreeClassifier(max_depth=15))
-        clfs.append(RandomForestClassifier(n_estimators=20, random_state=1337))
-        clfs.append(RandomForestClassifier(n_estimators=10, random_state=4141))
-        clfs.append(MLPClassifier(hidden_layer_sizes=(50, 25, 5), activation='logistic', max_iter=300))
+
+        clfs_names.append('DecisionTreeClassifier 1')
+        clfs.append(DecisionTreeClassifier(max_depth=None, min_samples_split=3))
+
+        clfs_names.append('RandomForestClassifier 1')
+        clfs.append(RandomForestClassifier(n_estimators=50, random_state=1337))
+
+        clfs_names.append('RandomForestClassifier 2')
+        clfs.append(RandomForestClassifier(n_estimators=20, random_state=4141))
+
+        clfs_names.append('MLPClassifier')
+        clfs.append(MLPClassifier(hidden_layer_sizes=(50, 25, 5), activation='logistic', early_stopping=True))
 
         # -------------------
         #  Train classifiers
@@ -94,16 +112,14 @@ if __name__=="__main__":
         # minimize weights
         init_weights = np.random.uniform(0.3, 0.7, (len(y_proba_pred),))
         init_weights /= np.sum(init_weights)
-        # adding constraints  and a different solver as suggested by user 16universe
-        # https://kaggle2.blob.core.windows.net/forum-message-attachments/75655/2393/otto%20model%20weights.pdf?sv=2012-02-12&se=2015-05-03T21%3A22%3A17Z&sr=b&sp=r&sig=rkeA7EJC%2BiQ%2FJ%2BcMpcA4lYQLFh6ubNqs2XAkGtFsAv0%3D
+        # weights must be in range [0; 1] and must sum to 1
         constraint = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
-        # our weights are bound between 0 and 1
         bounds = [(0, None)] * len(y_proba_pred)
         # get best weights
         res = minimize(log_loss_func, init_weights, method='SLSQP', bounds=bounds, constraints=constraint)
-        EL_weights = res['x']
+        best_weights = res['x']
         # print results
-        print("   > Best Weights     : {}".format(np.round(EL_weights, 3)))
+        print("   > Best Weights     : {}".format(np.round(best_weights, 3)))
         print("   > Initial log-loss : {}".format(log_loss_func(init_weights)))
         print("   > Final log-loss   : {}".format(res['fun']))
 
@@ -113,7 +129,7 @@ if __name__=="__main__":
         # predict proba
         y_pred_p = np.zeros((len(y_test[person]), 2))
         for i_clf, clf in enumerate(clfs):
-            y_pred_p += EL_weights[i_clf] * clf.predict_proba(X_test)
+            y_pred_p += best_weights[i_clf] * clf.predict_proba(X_test)
         y_pred = np.argmax(y_pred_p, axis=1)
         print(" * Accuracy on test set with ensamble learning : {:.4f}".format(accuracy_score(y_test[person], y_pred)))
         print("{}".format(confusion_matrix(y_test[person], y_pred)))
