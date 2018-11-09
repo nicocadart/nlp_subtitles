@@ -23,15 +23,13 @@ def one_hot_encoding(labels, states, unknown_name='unknown'):
 
     for i, sample in enumerate(labels):
 
-        oh = np.zeros((1, n_states))
         if sample in states:
-            oh[0, states.index(sample)] = 1
+            one_hot_encode[i, states.index(sample)] = 1
 
         # if target isn't linked to any state, put 1 in "unknown"
-        if unknown_name:
-            oh[0, -1] = 1
+        elif unknown_name:
+            one_hot_encode[i, -1] = 1
 
-        one_hot_encode[i, :] = oh
     return one_hot_encode
 
 
