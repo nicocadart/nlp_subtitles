@@ -6,3 +6,6 @@ TBBT/
 *.png
 .ipynb_checkpoints/
 .idea/*
+data/*.npy
+data/*.txt
+data/*.h5
