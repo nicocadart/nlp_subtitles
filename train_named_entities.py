@@ -1,8 +1,9 @@
 import numpy as np
-from collections import Counter
 from scipy.optimize import minimize
+import csv
+import warnings
 
-import nltk
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
@@ -10,205 +11,120 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, log_loss
+from xgboost import XGBClassifier
 
-from parsing_toolbox import *
-from encoding import *
-
-
-INDEX_SETS_PATH = "data/train_test_split_scenes_indices.npy"
-PERSONS_NE_DB = "data/persons_ne_db.csv"
-TEST_RESULTS_PATH = "data/prediction_named_entities_test.csv"
+from parsing_toolbox import PERSONS, UNKNOWN_STATE
+from named_entities_toolbox import get_train_test_ne_persons_dataset
 
 
-def get_named_entities(tokens, category=None, tokenize=False, once=True):
+NE_MIN_COUNT = 25
+NE_ONCE = False
+POSSIBLE_LOCUTORS = PERSONS + [UNKNOWN_STATE]
+TEST_RESULTS_PATH = "data/prediction_ne_test.csv"
+
+
+def train_models(models, X_train, y_train, X_valid=None, y_valid=None, models_names=None, verbose=True):
+    """ Train a list of models on training set."""
+    for i_model, model in enumerate(models):
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+            if models_names is not None:
+                model_name = models_names[i_model]
+            else:
+                model_name = i_model + 1
+
+            if verbose:
+                print('Training model {}'.format(model_name))
+            models[i_model] = CalibratedClassifierCV(model, method='isotonic', cv=3)
+            model = models[i_model]
+            model.fit(X_train, y_train)
+
+            if verbose and X_valid.any() and y_valid.any():
+                print(' * Accuracy : {:.2f}%'.format(100*model.score(X_valid, y_valid)))
+                print(' * Logloss  : {:.3f}'.format(log_loss(y_valid, model.predict_proba(X_valid))))
+
+
+def models_predict_proba(models, X):
+    """ Run predictions for a list of models """
+    y_proba_pred = []
+    for model in models:
+        y_proba_pred.append(model.predict_proba(X))
+    return y_proba_pred
+
+
+def models_predict_proba_satcked(models, X):
+    y_pred_p_models = models_predict_proba(models, X)
+    return np.hstack(tuple(y_pred_p[:,:-1] for y_pred_p in y_pred_p_models))
+
+def modelmix_predict_proba(models, weights, X):
     """
-    Return named entities found in some text.
-    :param tokens: array or list of words. If a full text is given (without words being segmented, use tokenize=True)
-    :param category: if provided, return only the list of named entities of type 'category'
-    :param tokenize: needs to be set to True if 'tokens' is a raw text given as input.
-    :param once: if True, each named entities is returned only once (remove several occurences)
-    :return: if category=None: a dic with keys as detected named entities types, and values as list of detections.
-             else: a list of detections of type 'category'
+    @brief: take a list of sklearn models, weights and a dataset and return the weighted prediction
+            over the samples
+
+    @param:
+            models: list of tuple (name, model), with model a sklearn model already trained
+            weights: list of float, weight for each model (sum(weight)==1)
+            X: ndarray, (n_samples, n_features), dataset to predict
+
+    @return:
+            y_pred_p: ndarray, (n_samples, n_classes), probability for each class for each sample
     """
-    # tokenize raw text if necessary
-    if tokenize:
-        tokens = nltk.word_tokenize(tokens)
-
-    # get named entities
-    ne_chunk_tree = nltk.ne_chunk(nltk.pos_tag(tokens))
-    ne_dict = {chunk.label(): [] for chunk in ne_chunk_tree if hasattr(chunk, 'label')}
-    for chunk in ne_chunk_tree:
-        if hasattr(chunk, 'label'):
-            ne_dict[chunk.label()] += [c[0] for c in chunk]
-
-    # filter named entities
-    if once:
-        for ne in ne_dict.keys():
-            ne_dict[ne] = list(set(ne_dict[ne]))
-
-    # return named entities
-    if category:
-        return ne_dict[category] if category in ne_dict.keys() else []
-    else:
-        return ne_dict
+    n_classes = len(models[0].classes_)
+    y_pred_p = np.zeros((X.shape[0], n_classes))
+    for i_model, model in enumerate(models):
+        y_pred_p += weights[i_model] * model.predict_proba(X)
+    return y_pred_p
 
 
-def build_ne_persons_dataset():
-    """
-    @brief: build a list of episodes files, and create a database of the named entities in each scene,
-                associated with the labels being the person who said it
-    @return: named_entities : list of found named entities in each scene
-             labels: list of locutors in each scene
-    """
-    named_entities = []
-    db = load_db()
-    scenes_persons, scenes_text, scene_ids = get_persons_scenes(db)
-    for persons, text in zip(scenes_persons, scenes_text):
+def train_model_mix(models, X, y, score='logloss'):
+    """ Compute best weights for ensemble learning """
+    n_classes = len(models[0].classes_)
 
-        # get named entities
-        ne_dict = get_named_entities(text, once=False, tokenize=True)
-        ne = [word for words in ne_dict.values() for word in words]
+    # predict proba
+    y_proba_pred = models_predict_proba(models, X)
 
-        # update dataset
-        named_entities.append(ne)
+    def log_loss_func(weights):
+        y_pred_mix = np.zeros((X.shape[0], n_classes))
+        for i_model, model in enumerate(models):
+            y_pred_mix += weights[i_model] * y_proba_pred[i_model]
+        # y_pred_mix = modelmix_predict_proba(models, weights, X)
+        return log_loss(y, y_pred_mix)
 
-    return named_entities, scenes_persons, scene_ids
+    def error_rate_func(weights):
+        y_pred_mix = np.zeros((X.shape[0], n_classes))
+        for i_model, model in enumerate(models):
+            y_pred_mix += weights[i_model] * y_proba_pred[i_model]
+        # y_pred_mix = modelmix_predict_proba(models, weights, X)
+        return 1 - accuracy_score(y, np.argmax(y_pred_mix, axis=1))
 
+    # function we want to minimize
+    if score == 'logloss':
+        opt_function = log_loss_func
+    elif score == 'accuracy':
+        opt_function = error_rate_func
 
-def load_ne_persons_dataset():
-    """
-    Load full named_entities and locutors per scene dataset, either by reading existing file or building it.
-    :return: named_entities : list of found named entities in each scene
-             persons: list of locutors in each scene
-    """
-    # read database
-    named_entities, persons, scene_ids = [], [], []
+    # Uniform initialisation
+    init_weights = np.ones((len(y_proba_pred),)) / len(y_proba_pred)
+    # Weights are in range [0; 1] and must sum to 1
+    constraint = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
+    bounds = [(0, 1)] * len(y_proba_pred)
+    # Compute best weights (method chosen with the advice of Kaggle kernel)
+    res = minimize(opt_function, init_weights, method='SLSQP', bounds=bounds, constraints=constraint)
+    optimal_weights = res['x']
 
-    # Load dataset if already exists
-    if isfile(PERSONS_NE_DB):
-        print("Loading named entities dataset from pre-built file \'{}\'".format(PERSONS_NE_DB))
-        with open(PERSONS_NE_DB, "r", newline='') as csvfile:
-            reader = csv.reader(csvfile, delimiter='§')
-            for row in reader:
-                scene_id = row[0]
-                locutors = row[1].split("|")
-                ne = row[2].split("|")
-                scene_ids.append(scene_id)
-                named_entities.append(ne)
-                persons.append(locutors)
-
-    else:
-        # build dataset
-        print("Building named entities dataset")
-        named_entities, persons, scene_ids = build_ne_persons_dataset()
-
-        # write dataset for future executions
-        print("Saving named entities dataset to file \'{}\'".format(PERSONS_NE_DB))
-        with open(PERSONS_NE_DB, "w", newline='') as csvfile:
-            writer = csv.writer(csvfile, delimiter='§')
-            for scene_id, ne, locutors in zip(scene_ids, named_entities, persons):
-                ne_str = "|".join(ne)
-                locutors_str = "|".join(locutors)
-                writer.writerow([scene_id, locutors_str, ne_str])
-
-    return named_entities, persons, scene_ids
-
-
-def clean_ne_persons_dataset(named_entities, persons, min_ne_count=5, states=PERSONS, unknown_state=UNKNOWN_STATE, once=False):
-    """
-    Filter data by selecting only named entities occuring more than "min_ne_count", and replacing all states which are
-    not in "states" by "unknown_state". If "once" is set to True, only one occurence of each NE in each scene will be
-    kept.
-    """
-    ne_count = Counter([ne for ne_scene in named_entities for ne in ne_scene])
-    ne_vocab = {ne for ne, count in ne_count.items() if count >= min_ne_count}
-
-    ne_cleaned, persons_cleaned = [], []
-    for i_scene in range(len(named_entities)):
-
-        # clean labels
-        locutors = list({person if person in states else unknown_state for person in persons[i_scene]})
-
-        # clean named entities
-        if once:
-            ne = list({ne for ne in named_entities[i_scene] if ne in ne_vocab})
-        else:
-            ne = [ne for ne in named_entities[i_scene] if ne in ne_vocab]
-
-        ne_cleaned.append(ne)
-        persons_cleaned.append(locutors)
-
-    return ne_cleaned, persons_cleaned
-
-
-def get_train_test_ne_persons_dataset(named_entities, persons, scene_ids, train_val_test_path=INDEX_SETS_PATH, possible_locutors=PERSONS):
-    """
-    Convert ne/persons database into a trainable hot encoding database split into train, validation and test sets.
-    :param named_entities:
-    :param persons:
-    :param train_ratio:
-    :param possible_locutors:
-    :return:
-    """
-    # constants
-    n_samples = len(named_entities)
-    scene_ids = np.array(scene_ids)
-    persons = np.array(persons)
-    indexes = np.load(train_val_test_path)
-    train_ids, valid_ids, test_ids = indexes[0], indexes[1], indexes[2]
-
-    # build X : hot encoded named_entities
-    ne_vocab = {ne for ne_scene in named_entities for ne in ne_scene if ne}
-    n_features = len(ne_vocab)
-    X = np.zeros((n_samples, n_features))
-    for i_scene in range(n_samples):
-        X[i_scene, :] = np.sum(one_hot_encoding(named_entities[i_scene], list(ne_vocab), unknown_name=''), axis=0)
-    X_train = X[np.isin(scene_ids, train_ids), :]
-    X_valid = X[np.isin(scene_ids, valid_ids), :]
-    X_test  = X[np.isin(scene_ids, test_ids),  :]
-
-    # build y : one hot encoded persons
-    y_train, y_valid, y_test = {}, {}, {}
-    for person in possible_locutors:
-        y_train[person] = np.array([1 if person in locutors else 0 for locutors in persons[np.isin(scene_ids, train_ids)]])
-        y_valid[person] = np.array([1 if person in locutors else 0 for locutors in persons[np.isin(scene_ids, valid_ids)]])
-        y_test[person]  = np.array([1 if person in locutors else 0 for locutors in persons[np.isin(scene_ids, test_ids)]])
-
-    return X_train, y_train, train_ids, X_valid, y_valid, valid_ids, X_test, y_test, test_ids
+    return optimal_weights
 
 
 if __name__=="__main__":
-    # params
-    min_count = 5
-    once = False
 
     # =================================================================
     #                         LOAD DATASET
     # =================================================================
 
-    # Load dataset
-    named_entities_full, persons_full, scene_ids = load_ne_persons_dataset()
-
-    # Clean dataset :
-    #   - replace all occurences of unkown characters by UNKOWN_STATE
-    #   - remove named_entities counted less than 'min_count' times
-    #   - keep only a single occurence of each NE in each scene if "once" is True
-    print("Cleaning dataset with min_ne_count = {}".format(min_count))
-    named_entities, persons = clean_ne_persons_dataset(named_entities_full,
-                                                       persons_full,
-                                                       min_ne_count=min_count,
-                                                       once=once)
-
-    # # Display remaining dataset
-    # for ne, pers in zip(named_entities_cleaned, persons_cleaned):
-    #     print("{:<85}: {}".format(" ".join(pers), " ".join(ne)))
-
-    # Get train and test datasets
-    possible_locutors = PERSONS + [UNKNOWN_STATE]
-    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = get_train_test_ne_persons_dataset(named_entities,
-                                                                                                                           persons,
-                                                                                                                           scene_ids,
-                                                                                                                           possible_locutors=possible_locutors)
+    ne_dataset = get_train_test_ne_persons_dataset(POSSIBLE_LOCUTORS, ne_min_count=NE_MIN_COUNT, once=NE_ONCE)
+    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = ne_dataset
 
     print("Dimensions of datasets :")
     print(" * train : {}".format(X_train.shape))
@@ -219,91 +135,161 @@ if __name__=="__main__":
     #                      TRAIN CLASSIFIERS
     # =================================================================
 
-    test_results = np.zeros((X_test.shape[0], 2*len(possible_locutors)))
+    test_results = np.zeros((X_test.shape[0], 2*len(POSSIBLE_LOCUTORS)))
 
     # Train models for each person and print results
-    for i_person, person in enumerate(possible_locutors):
-        print("\nTraining classifiers for '{}'".format(person))
+    for i_person, person in enumerate(POSSIBLE_LOCUTORS):
+        print("\n==================================================")
+        print("{:^50}".format(person.upper()))
+        print("==================================================")
 
         # -------------------
         #  Init classifiers
         # -------------------
-        clfs_names = ['SVM linear', 'SVM poly', 'SVM rbf', 'LogisticRegression', 'DecisionTreeClassifier', 'RandomForestClassifier', 'RandomForestClassifier', 'MLPClassifier']
+
+        clfs_names = []
         clfs = []
-        clfs.append(SVC(kernel='linear', probability=True))
-        clfs.append(SVC(kernel='poly', probability=True))
-        clfs.append(SVC(kernel='rbf', probability=True))
-        clfs.append(LogisticRegression())
-        clfs.append(DecisionTreeClassifier(max_depth=15))
-        clfs.append(RandomForestClassifier(n_estimators=20, random_state=1337))
-        clfs.append(RandomForestClassifier(n_estimators=10, random_state=4141))
-        clfs.append(MLPClassifier(hidden_layer_sizes=(50, 25, 5), activation='logistic', max_iter=300))
+
+        # clfs_names.append('SVM linear')
+        # clfs.append(SVC(kernel='linear', C=1 ,probability=True))
+        #
+        # clfs_names.append('SVM poly')
+        # clfs.append(SVC(kernel='poly', C=1, probability=True))
+        #
+        # clfs_names.append('SVM rbf')
+        # clfs.append(SVC(kernel='rbf', C=1, probability=True))
+
+        clfs_names.append('LogisticRegression')
+        parameters = {'penalty': 'l2',
+                      'C': 0.1}
+        clfs.append(LogisticRegression(**parameters))
+
+        # clfs_names.append('RandomForestClassifier 1')
+        # parameters = {'min_samples_split': 2,
+        #               'n_estimators': 200,
+        #               'max_depth': 10,
+        #               'criterion': 'entropy',
+        #               'n_jobs': -1}
+        # clfs.append(RandomForestClassifier(**parameters))
+
+        clfs_names.append('RandomForestClassifier 2')
+        parameters = {'min_samples_split': 4,
+                      'n_estimators': 100,
+                      'max_depth': 20,
+                      'criterion': 'gini',
+                      'n_jobs': -1}
+        clfs.append(RandomForestClassifier(**parameters))
+
+        # clfs_names.append('MLPClassifier 1')
+        # parameters = {'activation': 'relu',
+        #               'early_stopping': True,
+        #               'hidden_layer_sizes': (90,),
+        #               'batch_size': 128,
+        #               'alpha': 0.0001}
+        # clfs.append(MLPClassifier(**parameters))
+        #
+        # clfs_names.append('MLPClassifier 2')
+        # parameters = {'activation': 'relu',
+        #               'early_stopping': True,
+        #               'hidden_layer_sizes': (70, 50, 25, 15),
+        #               'batch_size': 128,
+        #               'alpha': 0.001}
+        # clfs.append(MLPClassifier(**parameters))
+        #
+        # clfs_names.append('SVM')
+        # parameters = {'probability': True,
+        #               'kernel': 'rbf',
+        #               'C': 10.0}
+        # clfs.append(SVC(**parameters))
+
+        clfs_names.append('XGBoost 1')
+        parameters = {'n_estimators': 100,
+                      'objective': 'binary:logistic',
+                      'colsample_bytree': 0.8,
+                      'subsample': 1,
+                      'max_depth': 9,
+                      'reg_lambda': 1,
+                      'n_jobs': -1,
+                      'learning_rate': 0.1,
+                      'reg_alpha': 0}
+        clfs.append(XGBClassifier(**parameters))
+
+        # clfs_names.append('XGBoost 2')
+        # parameters = {'n_estimators': 200,
+        #               'objective': 'binary:logistic',
+        #               'colsample_bytree': 0.8,
+        #               'subsample': 1,
+        #               'max_depth': 9,
+        #               'reg_lambda': 1,
+        #               'n_jobs': -1,
+        #               'learning_rate': 0.1,
+        #               'reg_alpha': 1}
+        # clfs.append(XGBClassifier(**parameters))
 
         # -------------------
         #  Train classifiers
         # -------------------
-        print(" * Training classifiers independently")
-        y_proba_valid = []
-        for i_clf, clf in enumerate(clfs):
-            _ = clf.fit(X_train, y_train[person])
-            y_pred = clf.predict(X_test)
-            print("   > {:<22} : {:.4f}".format(clfs_names[i_clf], accuracy_score(y_test[person], y_pred)))
-            #print(confusion_matrix(y_test[person], y_pred))
+        print("\nTraining classifiers independently")
+        train_models(clfs, X_train, y_train[person], X_valid, y_valid[person], models_names=clfs_names)
+
 
         # --------------------------------
         #  Find ensamble learning weights
         # --------------------------------
-        print(" * Learning ensamble weights")
+        print("\nEnsemble learning")
 
-        # predict proba
-        y_proba_pred = []
-        for clf in clfs:
-            y_proba_pred.append(clf.predict_proba(X_valid))
+        # get optimal weights
+        best_weights = train_model_mix(clfs, X_valid, y_valid[person], score='logloss')
+        y_pred_proba = modelmix_predict_proba(clfs, best_weights, X_test)
+        y_pred = np.argmax(y_pred_proba, axis=1)
 
-        # function to minimize
-        def log_loss_func(weights):
-            ''' scipy minimize will pass the weights as a numpy array '''
-            final_prediction = 0
-            for weight, prediction in zip(weights, y_proba_pred):
-                final_prediction += weight * prediction
-            return log_loss(y_valid[person], final_prediction)
-        def error_rate_func(weights):
-            ''' scipy minimize will pass the weights as a numpy array '''
-            final_prediction = 0
-            for weight, prediction in zip(weights, y_proba_pred):
-                final_prediction += weight * prediction
-            return 1 - accuracy_score(y_test[person], np.argmax(final_prediction, axis=1))
-
-        # minimize weights
-        init_weights = np.random.uniform(0.3, 0.7, (len(y_proba_pred),))
-        init_weights /= np.sum(init_weights)
-        # adding constraints  and a different solver as suggested by user 16universe
-        # https://kaggle2.blob.core.windows.net/forum-message-attachments/75655/2393/otto%20model%20weights.pdf?sv=2012-02-12&se=2015-05-03T21%3A22%3A17Z&sr=b&sp=r&sig=rkeA7EJC%2BiQ%2FJ%2BcMpcA4lYQLFh6ubNqs2XAkGtFsAv0%3D
-        constraint = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
-        # our weights are bound between 0 and 1
-        bounds = [(0, None)] * len(y_proba_pred)
-        # get best weights
-        res = minimize(log_loss_func, init_weights, method='SLSQP', bounds=bounds, constraints=constraint)
-        EL_weights = res['x']
         # print results
-        print("   > Best Weights     : {}".format(np.round(EL_weights, 3)))
-        print("   > Initial log-loss : {}".format(log_loss_func(init_weights)))
-        print("   > Final log-loss   : {}".format(res['fun']))
-
-        # ---------------
-        #  Print results
-        # ---------------
-        # predict proba
-        y_pred_p = np.zeros((len(y_test[person]), 2))
-        for i_clf, clf in enumerate(clfs):
-            y_pred_p += EL_weights[i_clf] * clf.predict_proba(X_test)
-        y_pred = np.argmax(y_pred_p, axis=1)
-        print(" * Accuracy on test set with ensamble learning : {:.4f}".format(accuracy_score(y_test[person], y_pred)))
+        print(" * Best Weights  : {}".format(np.round(best_weights, 3)))
+        print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
+        print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
         print("{}".format(confusion_matrix(y_test[person], y_pred)))
 
         # save test results
         test_results[:, i_person] = y_test[person]
-        test_results[:, len(possible_locutors)+i_person] = y_pred_p[:, 1]
+        test_results[:, len(POSSIBLE_LOCUTORS)+i_person] = y_pred_proba[:, 1]
+
+        # -------------------------
+        #  Second layer classifier
+        # -------------------------
+        print("\nSecond layer of classifier")
+
+        # concatenate predictions from 1st layer classifiers
+        X_train2 = models_predict_proba_satcked(clfs, X_train)
+        X_valid2 = models_predict_proba_satcked(clfs, X_valid)
+        X_test2 = models_predict_proba_satcked(clfs, X_test)
+
+        # classifier
+        # parameters = {'objective': 'binary:logistic',
+        #               'n_estimators': 200,
+        #               'max_depth': 9,
+        #               'learning_rate': 0.1,
+        #               'subsample': 0.7,
+        #               'colsample_bytree': 0.8,
+        #               'reg_lambda': 1,
+        #               'reg_alpha': 0,
+        #               'n_jobs': -1}
+        # final_model = XGBClassifier(**parameters)
+
+        parameters = {'n_estimators': 200,
+                      'max_depth': 9,
+                      'min_samples_split': 2}
+        final_model = RandomForestClassifier(**parameters)
+
+        # train on dataset and test predictions
+        final_model.fit(X_train2, y_train[person])
+        y_pred_proba = final_model.predict_proba(X_test2)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+
+        # print results
+        print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
+        print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
+        print("{}".format(confusion_matrix(y_test[person], y_pred)))
+
 
     # save results in csv
     with open(TEST_RESULTS_PATH, "w", newline='') as csvfile:
@@ -346,4 +332,3 @@ if __name__=="__main__":
     # print("number of named entities {} :".format(len(ne_set)))
     # for ne, count in ne_counter.most_common():
     #     print("  * {} : {}".format(ne, count))
-
