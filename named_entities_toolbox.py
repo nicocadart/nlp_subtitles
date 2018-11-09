@@ -134,7 +134,7 @@ def clean_ne_persons_dataset(named_entities, persons, min_ne_count=5, states=PER
     return ne_cleaned, persons_cleaned
 
 
-def split_train_test_ne_persons_dataset(named_entities, persons, scene_ids, train_val_test_path=INDEX_SETS_PATH, possible_locutors=PERSONS):
+def split_train_test_ne_persons_dataset(named_entities, persons, scene_ids, train_val_test_path=INDEX_SETS_PATH, possible_locutors=PERSONS, return_vocab=False):
     """
     Convert ne/persons database into a trainable hot encoding database split into train, validation and test sets.
     """
@@ -162,10 +162,13 @@ def split_train_test_ne_persons_dataset(named_entities, persons, scene_ids, trai
         y_valid[person] = np.array([1 if person in locutors else 0 for locutors in persons[np.isin(scene_ids, valid_ids)]])
         y_test[person]  = np.array([1 if person in locutors else 0 for locutors in persons[np.isin(scene_ids, test_ids)]])
 
-    return X_train, y_train, train_ids, X_valid, y_valid, valid_ids, X_test, y_test, test_ids
+    if return_vocab:
+        return X_train, y_train, train_ids, X_valid, y_valid, valid_ids, X_test, y_test, test_ids, list(ne_vocab)
+    else:
+        return X_train, y_train, train_ids, X_valid, y_valid, valid_ids, X_test, y_test, test_ids
 
 
-def get_train_test_ne_persons_dataset(possible_locutors, ne_min_count=10, once=False):
+def get_train_test_ne_persons_dataset(possible_locutors, ne_min_count=10, once=False, return_vocab=False):
 
     # Load dataset
     named_entities_full, persons_full, scene_ids = load_ne_persons_dataset()
@@ -185,9 +188,7 @@ def get_train_test_ne_persons_dataset(possible_locutors, ne_min_count=10, once=F
     #     print("{:<85}: {}".format(" ".join(pers), " ".join(ne)))
 
     # Get train and test datasets
-    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = split_train_test_ne_persons_dataset(named_entities,
-                                                                                                                           persons,
-                                                                                                                           scene_ids,
-                                                                                                                           possible_locutors=possible_locutors)
-
-    return X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test
+    if return_vocab:
+        return split_train_test_ne_persons_dataset(named_entities, persons, scene_ids, possible_locutors=possible_locutors, return_vocab=True)
+    else:
+        return split_train_test_ne_persons_dataset(named_entities, persons, scene_ids, possible_locutors=possible_locutors)

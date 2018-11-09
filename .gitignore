@@ -1,4 +1,5 @@
 TBBT/
+data/
 *.csv
 *.pyc
 *.h5
