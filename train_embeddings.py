@@ -9,10 +9,12 @@ from embeddings_toolbox import create_simple_model, create_conv_model
 ################################
 ######## CONSTANTS
 # Characters we want to detect
-STATES = PERSONS + UNKNOWN_STATE
+STATES = PERSONS + [UNKNOWN_STATE]
 # Dir for embeddings data
 GLOVE_DIR = 'data/'
-GLOVE_PATH = 'data/pre_trained_glove_model.h5'
+WEIGHTS_PATH = 'data/trained_weights.h5'
+EMBEDD_PATH = 'data/embedding_matrix.npy'
+
 INDEX_SETS_PATH = "data/train_test_split_scenes_indices.npy"
 OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
 
@@ -20,10 +22,10 @@ OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
 EMBEDDING_DIM = 100
 TRAIN_VALID_TEST_RATIO = (0.8, 0.1, 0.1)
 RANDOM_SPLIT = False
-MAXLEN = 250  # We will cut sentence after 250 words (max is 202))
+MAXLEN = 200  # We will cut sentence after 200 words (max is 202))
 MAX_WORDS = 10000  # We will only consider the top 10,000 words in the dataset
 
-TRAIN = False # Launch a training on the data. If false, load latest trained model
+TRAIN = True # Launch a training on the data. If false, load latest trained model
 
 ################################
 ######## LOADING DATA FOR TRAIN
@@ -89,29 +91,35 @@ else:
     id_test = id_scene[np.isin(id_scene, test)]
 
 
-
 print('TRAIN SHAPE:', x_train.shape, y_train.shape)
 print('VAL SHAPE:', x_val.shape, y_val.shape)
 print('TEST SHAPE:', x_test.shape, y_test.shape)
 
 ############################################
-######## LOAD EMBEDDINGS
+######## LOAD PRE-TRAINED EMBEDDINGS OR...
 
+# From Glove pre-trained embedding
 embedding_matrix = compute_embedding_weights(GLOVE_DIR, EMBEDDING_DIM, MAX_WORDS, word_index)
 
+# # From personal train on our classification model
+# embedding_matrix = np.load(EMBEDD_PATH)
+
+
 ############################################
-######## CREATE MODEL
-model = create_simple_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, n_classes)
-# model = create_conv_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, n_classes)
+######## ... LEARN IT
 
 if TRAIN:
+
+    model = create_simple_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, n_classes)
+    # model = create_conv_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, n_classes)
+
     # Train Model
     train_model(model, x_train, y_train, x_val, y_val, epochs=10)
 
-############################################
-######## TEST ACCURACY PER CHARACTER
+    ############################################
+    ######## TEST ACCURACY PER CHARACTER
 
-test_model(model, x_test, y_test, id_test, n_classes, states=STATES,
-           threshold_prediction=0.02,
-           loadpath=GLOVE_PATH,
-           savepath=OUTPUT_PREDICTIONS_PATH)
+    test_model(model, x_test, y_test, id_test, n_classes, states=STATES,
+               threshold_prediction=0.02,
+               loadpath=None,
+               savepath=OUTPUT_PREDICTIONS_PATH)
