@@ -1,6 +1,8 @@
 import numpy as np
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
+from sklearn.ensemble import RandomForestClassifier
+
 from parsing_toolbox import load_sentences_by_person, PERSONS, UNKNOWN_STATE
 from embeddings_toolbox import tokenize_corpus, compute_embedding_weights, train_model, test_model
 from embeddings_toolbox import create_simple_model, create_conv_model
@@ -25,7 +27,7 @@ RANDOM_SPLIT = False
 MAXLEN = 200  # We will cut sentence after 200 words (max is 202))
 MAX_WORDS = 10000  # We will only consider the top 10,000 words in the dataset
 
-TRAIN = True # Launch a training on the data. If false, load latest trained model
+TRAIN = False # Launch a training on the data. If false, load latest trained model
 
 ################################
 ######## LOADING DATA FOR TRAIN
@@ -120,6 +122,20 @@ if TRAIN:
     ######## TEST ACCURACY PER CHARACTER
 
     test_model(model, x_test, y_test, id_test, n_classes, states=STATES,
-               threshold_prediction=0.02,
+               threshold_prediction=0.000001,
                loadpath=None,
                savepath=OUTPUT_PREDICTIONS_PATH)
+
+############################################
+######## TRAIN A CLASSIFICATION MODEL (selected by gridsearch_embeddings.py)
+
+
+model_classif = RandomForestClassifier(n_estimators=150, max_depth=10,
+                                       min_samples_split=2, criterion='gini')
+
+model_classif.fit(x_train, y_train)
+
+test_model(model_classif, x_test, y_test, id_test, n_classes, states=STATES,
+           threshold_prediction=0.02,
+           loadpath=None,
+           savepath=OUTPUT_PREDICTIONS_PATH)

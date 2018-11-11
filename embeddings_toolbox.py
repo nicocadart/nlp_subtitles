@@ -143,6 +143,7 @@ def return_embeddings(data, max_words, embedding_dim, maxlen, embedding_matrix):
 
     model_emb.compile('rmsprop', 'mse')
     embedded_data = model_emb.predict(data)
+    embedded_data = embedded_data.reshape(len(data), maxlen*embedding_dim)
 
     return embedded_data
 
@@ -260,9 +261,9 @@ def test_model(model, x_test, y_test, id_test, n_classes, states,
 
             row = [id_sc] + list(truth_array) + list(predict_scene)
             writer.writerow(row)
-
             predict_class = predict_scene[predict_scene > threshold_prediction].argsort()
 
+            # print(predict_scene)
             # print(truth_class)
             # print(predict_class)
 

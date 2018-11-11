@@ -3,12 +3,12 @@ import csv
 import matplotlib.pyplot as plt
 import warnings
 
-# from xgboost import XGBClassifier
+from xgboost import XGBClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-# from sklearn.neural_network import MLPClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
@@ -40,7 +40,7 @@ MAXLEN = 200  # We will cut sentence after 200 words (max is 202))
 MAX_WORDS = 10000  # We will only consider the top 10,000 words in the dataset
 
 N_CROSS_VAL = 3
-N_JOBS = 16
+N_JOBS = -1
 CSV_DIR = 'gridsearch_results'
 
 
@@ -61,6 +61,7 @@ data = pad_sequences(sequences, maxlen=MAXLEN)
 
 # WARNING Bad RAM again
 data = data[:1000, :]
+labels = labels[:1000]
 
 ###################################################
 ######## LOAD PRE-TRAINED EMBEDDINGS AND EMBED DATA
@@ -75,9 +76,9 @@ X = return_embeddings(data, MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix)
 
 labels = np.asarray(labels)
 id_scene = np.asarray(id_scene)
-labels = to_categorical(labels)
+# labels = to_categorical(labels)
 
-print('Shape of data tensor:', data.shape)
+print('Shape of data tensor:', X.shape)
 print('Shape of label tensor:', labels.shape)
 
 ############################################
@@ -129,43 +130,36 @@ print('TEST SHAPE:', x_test.shape, y_test.shape)
 
 
 models = []
-
-# Logistic Regression
-parameters = {'penalty':['l1', 'l2'],
-              'C':[0.1, 1., 10.],
-              'multi_class':['auto']}
-models.append(("LogisticRegression", LogisticRegression(), parameters))
-
+#
+# # Logistic Regression
+# parameters = {'penalty':['l1', 'l2'],
+#               'C':[0.1, 1., 10.],
+#               'multi_class':['ovr']}
+# models.append(("LogisticRegression", LogisticRegression(), parameters))
+#
 # RandomForestClassifier
-parameters = {'n_estimators':[10, 50, 100, 150],
+parameters = {'n_estimators':[10, 50, 100, 150, 200, 250, 300],
               'criterion':['gini', 'entropy'],
               'max_depth':[None, 5, 10, 20],
               'min_samples_split':[2, 4],
               'n_jobs': [1]}
 models.append(("RandomForest", RandomForestClassifier(), parameters))
+#
+#
+# # DecisionTree
+# parameters = {'splitter':['best', 'random'],
+#               'criterion':['gini', 'entropy'],
+#               'max_depth':[None, 10, 20, 50],
+#               'min_samples_split':[2, 4, 6]}
+# models.append(("DecisionTree", DecisionTreeClassifier(), parameters))
 
-# # Multi-Layer Perceptron Classifier
-# parameters = {'hidden_layer_sizes':[(90,), (50,), (40, 30), (50, 25, 15), (70, 50, 25, 15)],
-#               'activation':['logistic', 'relu'],
-#               'batch_size':[128, 256],
-#               'alpha':[0.001, 0.0001],
-#               'early_stopping':[True]}
-# models.append(("MLPClassifier", MLPClassifier(), parameters))
+# # KNeighbors
+# parameters = {'n_neighbors':[3, 5, 7],
+#               'p':[1, 2],
+#               'n_jobs': [1]}
+# models.append(("KNeighbors", KNeighborsClassifier(), parameters))
 
-# DecisionTree
-parameters = {'splitter':['best', 'random'],
-              'criterion':['gini', 'entropy'],
-              'max_depth':[None, 10, 20, 50],
-              'min_samples_split':[2, 4, 6]}
-models.append(("DecisionTree", DecisionTreeClassifier(), parameters))
-
-# KNeighbors
-parameters = {'n_neighbors':[3, 5, 7],
-              'p':[1, 2],
-              'n_jobs': [1]}
-models.append(("KNeighbors", KNeighborsClassifier(), parameters))
-
-# # Extreme Gradient Boosting classifier
+# Extreme Gradient Boosting classifier
 # parameters = {'objective':['binary:logistic'],
 #               'subsample':[0.7, 1],
 #               'colsample_bytree':[0.8],
@@ -176,13 +170,20 @@ models.append(("KNeighbors", KNeighborsClassifier(), parameters))
 #               'n_estimators':[100, 150],
 #               'n_jobs': [-1]}
 # models.append(("XGBoost", XGBClassifier(), parameters))
-
-# SVM : /!\ Very slow convergence
-# parameters = {'kernel':['linear', 'rbf', 'poly', 'sigmoid'],
-#               'C':[0.1, 1., 10., 100],
-#               'probability':[True],
-#               'gamma'=['scale']}
-# models.append(("SVC", SVC(), parameters))
+#
+# # Multi-Layer Perceptron Classifier
+# parameters = {'hidden_layer_sizes':[(90,), (50,), (40, 30), (50, 25, 15), (70, 50, 25, 15)],
+# 'activation':['logistic', 'relu'],
+# 'batch_size':[128, 256],
+# 'alpha':[0.001, 0.0001],
+# 'early_stopping':[True]}
+# models.append(("MLPClassifier", MLPClassifier(), parameters))
+# # SVM : /!\ Very slow convergence
+# # parameters = {'kernel':['linear', 'rbf', 'poly', 'sigmoid'],
+# #               'C':[0.1, 1., 10., 100],
+# #               'probability':[True],
+# #               'gamma'=['scale']}
+# # models.append(("SVC", SVC(), parameters))
 
 results = []
 names = []
@@ -195,7 +196,7 @@ for name, model, parameter in models:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=FutureWarning)
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        clf = GridSearchCV(model, parameter, scoring='neg_log_loss', cv=N_CROSS_VAL,
+        clf = GridSearchCV(model, parameter, scoring='accuracy', cv=N_CROSS_VAL,
                            n_jobs=N_JOBS, verbose=2)
         clf.fit(X, labels)
         res = clf.cv_results_
