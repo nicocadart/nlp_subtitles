@@ -7,8 +7,10 @@ from keras.models import Sequential
 from keras.layers import Embedding, Flatten, Dense
 from keras.layers import Conv2D, Conv1D
 
-GLOVE_PATH = 'data/pre_trained_glove_model.h5'
+WEIGHTS_PATH = 'data/trained_weights.h5'
+EMBEDD_PATH = 'data/embedding_matrix.npy'
 OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
+
 
 def tokenize_corpus(sentences, num_words):
 
@@ -20,6 +22,7 @@ def tokenize_corpus(sentences, num_words):
     print('Found %s unique tokens.' % len(word_index))
 
     return sequences, word_index
+
 
 def compute_embedding_weights(directory, embedding_dim, max_words, word_index):
 
@@ -54,7 +57,7 @@ def create_simple_model(max_words, embedding_dim, maxlen, embedding_matrix, n_cl
             embedding_dim: int, dimension of embedding space
             maxlen: int, max length of sentence (width of input)
             embedding_matrix: ndarray (max_words, embedding_dim), precomputed weight for
-                                the Embedded layer
+                                the Embedded layer (no pre-trained weights if None)
             n_classes: int, number of class of the model
 
     @return:
@@ -70,8 +73,9 @@ def create_simple_model(max_words, embedding_dim, maxlen, embedding_matrix, n_cl
     model.summary()
 
     # Fix weights of the embedding layer with the pre-trained ones
-    model.layers[0].set_weights([embedding_matrix])
-    model.layers[0].trainable = False
+    if embedding_matrix is not None:
+        model.layers[0].set_weights([embedding_matrix])
+        model.layers[0].trainable = False
 
     # Compile model
     model.compile(optimizer='rmsprop',
@@ -105,8 +109,9 @@ def create_conv_model(max_words, embedding_dim, maxlen, embedding_matrix, n_clas
     model.summary()
 
     # Fix weights of the embedding layer with the pre-trained ones
-    model.layers[0].set_weights([embedding_matrix])
-    model.layers[0].trainable = False
+    if embedding_matrix is not None:
+        model.layers[0].set_weights([embedding_matrix])
+        model.layers[0].trainable = False
 
     # Compile model
     model.compile(optimizer='rmsprop',
@@ -115,16 +120,71 @@ def create_conv_model(max_words, embedding_dim, maxlen, embedding_matrix, n_clas
     return model
 
 
+def return_embeddings(data, max_words, embedding_dim, maxlen, embedding_matrix):
+
+    """
+    @brief: Create a Keras embedding model, and load the weights from embedding_matrix
+    @param:
+            max_words: int, max number of words in a sentence
+            embedding_dim: int, dimension of embedding space
+            maxlen: int, max length of sentence (width of input)
+            embedding_matrix: ndarray (max_words, embedding_dim), precomputed weight for
+                                the Embedded layer
+            n_classes: int, number of class of the model
+
+    @return:
+        embedded_data: ndarray (n_samples, embedding_dim), data expressed through embeddings
+    """
+
+    model_emb = Sequential()
+    model_emb.add(Embedding(max_words, embedding_dim, input_length=maxlen))
+
+    model_emb.layers[0].set_weights([embedding_matrix])
+
+    model_emb.compile('rmsprop', 'mse')
+    embedded_data = model_emb.predict(data)
+    embedded_data = embedded_data.reshape(len(data), maxlen*embedding_dim)
+
+    return embedded_data
+
+
 def train_model(model, x_train, y_train, x_val, y_val, epochs=4,
-                plot=True, savepath=GLOVE_PATH):
+                plot=True, model_path=WEIGHTS_PATH, embedding_path=EMBEDD_PATH):
+    """
+    @brief: Train a Keras model on train data, with validation, and plot the learning and
+                logloss curve
+    @param:
+        model: Keras model for embeddings
+        x_train: ndarray (n_train_samples, n_features),
+                  data to train on (each sample is a sentence, encoded)
+        y_train: ndarray (n__train_samples, n_classes), targets for train in categorical form
+        x_val: ndarray (n_val_samples, n_features),
+                  data to validate on
+        y_val: ndarray (n__val_samples, n_classes), targets for validation in categorical form
+        epochs: int, number of epochs for training
+        plot: boolean, if True, plot the learning curve (train and val), as well as logloss
+        model_path: str, path where the model is saved after training (no save if None)
+        embedding_path: str, path where the embedding weights are saved
+                        after training (no save if None)
+
+    @return:
+        model: Keras model for the NN, and trained
+    """
 
     history = model.fit(x_train, y_train,
                         epochs=epochs,
                         batch_size=32,
                         validation_data=(x_val, y_val),
                         verbose=1)
-    if savepath is not None:
-        model.save_weights(savepath)
+
+    # Saving the model for later
+    if model_path is not None:
+        model.save_weights(model_path)
+
+    # Saving the embedding layer for reuse
+    if embedding_path is not None:
+        embedding_matrix = model.layers[0].get_weights()[0]
+        np.save(embedding_path, embedding_matrix)
 
     if plot:
         ## Plot train, validation accuracy and loss
@@ -148,18 +208,39 @@ def train_model(model, x_train, y_train, x_val, y_val, epochs=4,
         plt.legend()
 
         plt.show()
-        return 0
+        return model
 
 
 def test_model(model, x_test, y_test, id_test, n_classes, states,
                threshold_prediction = 0.02,
-               loadpath=GLOVE_PATH,
+               loadpath=WEIGHTS_PATH,
                savepath=OUTPUT_PREDICTIONS_PATH):
 
-    model.load_weights(loadpath)
+    """
+    @brief: Test a Keras model on test data, and compute accuracy and confusion matrix per character
+            for a scene
+    @param:
+        model: Keras model for embeddings
+        x_test: ndarray (n_test_samples, n_features),
+                  data to test on (each sample is a sentence, encoded)
+        y_test: ndarray (n_test_samples, n_classes), targets for test in categorical form
+        id_test: ndarray (n_test_samples, ), id of scene for each sentence of the test set
+        n_classes: int, number of classes for prediction
+        states: list of str, names of classes for prediction (including 'UNKNOWN_STATE')
+        threshold_prediction: float, threshold of probability for classification
+        loadpath: str, if not None, load weigths for Keras model
+        savepath: str, path to save the results of prediction in .csv form
+
+    @return:
+        confusion_per_character: list of ndarray of size (2,2), list of confusion matrix
+                                    for each state
+    """
+
+    if loadpath is not None:
+        model.load_weights(loadpath)
+
     confusion_per_character = np.zeros((n_classes, 2, 2))
     unique_id_test = np.unique(id_test)
-
 
     with open(savepath, "w", newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=';')
@@ -180,9 +261,9 @@ def test_model(model, x_test, y_test, id_test, n_classes, states,
 
             row = [id_sc] + list(truth_array) + list(predict_scene)
             writer.writerow(row)
-
             predict_class = predict_scene[predict_scene > threshold_prediction].argsort()
 
+            # print(predict_scene)
             # print(truth_class)
             # print(predict_class)
 
