@@ -23,9 +23,9 @@ OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
 # Size of embedding space
 EMBEDDING_DIM = 100
 TRAIN_VALID_TEST_RATIO = (0.8, 0.1, 0.1)
-RANDOM_SPLIT = False
-MAXLEN = 200  # We will cut sentence after 200 words (max is 202))
-MAX_WORDS = 10000  # We will only consider the top 10,000 words in the dataset
+RANDOM_SPLIT = True
+MAXLEN = 100  # We will cut sentence after 200 words (max is 202, mean is 60))
+MAX_WORDS = 1000  # We will only consider the top x words in the dataset
 
 TRAIN = False # Launch a training on the data. If false, load latest trained model
 
@@ -122,7 +122,7 @@ if TRAIN:
     ######## TEST ACCURACY PER CHARACTER
 
     test_model(model, x_test, y_test, id_test, n_classes, states=STATES,
-               threshold_prediction=0.000001,
+               threshold_prediction=1e-5,
                loadpath=None,
                savepath=OUTPUT_PREDICTIONS_PATH)
 
@@ -133,6 +133,7 @@ if TRAIN:
 model_classif = RandomForestClassifier(n_estimators=150, max_depth=10,
                                        min_samples_split=2, criterion='gini')
 
+print(x_train)
 model_classif.fit(x_train, y_train)
 
 test_model(model_classif, x_test, y_test, id_test, n_classes, states=STATES,
