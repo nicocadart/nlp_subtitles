@@ -13,14 +13,18 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import confusion_matrix, accuracy_score, log_loss
 from xgboost import XGBClassifier
 
-from parsing_toolbox import PERSONS, UNKNOWN_STATE
-from named_entities_toolbox import get_train_test_ne_persons_dataset
+from parsing_toolbox import PERSONS, UNKNOWN_STATE, split_train_valid_test
+from named_entities_features import get_ne_dataset
 
 
-NE_MIN_COUNT = 25
-NE_ONCE = False
-POSSIBLE_LOCUTORS = PERSONS + [UNKNOWN_STATE]
+POSSIBLE_LOCUTORS = PERSONS #+ [UNKNOWN_STATE]
 TEST_RESULTS_PATH = "data/prediction_ne_test.csv"
+
+USE_NE_ALL = True
+USE_NE_PUNCT = True
+USE_NE_INTERJ = True
+NE_MIN_DF = 0.03
+BINARY_FEATURES = False
 
 
 def train_models(models, X_train, y_train, X_valid=None, y_valid=None, models_names=None, verbose=True):
@@ -54,9 +58,10 @@ def models_predict_proba(models, X):
     return y_proba_pred
 
 
-def models_predict_proba_satcked(models, X):
+def models_predict_proba_stacked(models, X):
     y_pred_p_models = models_predict_proba(models, X)
     return np.hstack(tuple(y_pred_p[:,:-1] for y_pred_p in y_pred_p_models))
+
 
 def modelmix_predict_proba(models, weights, X):
     """
@@ -123,19 +128,27 @@ if __name__=="__main__":
     #                         LOAD DATASET
     # =================================================================
 
-    ne_dataset = get_train_test_ne_persons_dataset(POSSIBLE_LOCUTORS, ne_min_count=NE_MIN_COUNT, once=NE_ONCE)
-    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = ne_dataset
+    X, y, scenes_ids = get_ne_dataset(possible_locutors=POSSIBLE_LOCUTORS,
+                                      ne_all=USE_NE_ALL,
+                                      ne_punct=USE_NE_PUNCT,
+                                      ne_interj=USE_NE_INTERJ,
+                                      ne_min_df=NE_MIN_DF,
+                                      binary=BINARY_FEATURES,
+                                      return_scenes_ids=True)
+    X_train, X_valid, X_test = split_train_valid_test(X)
+    y_train, y_valid, y_test = split_train_valid_test(y)
+    ids_train, ids_valid, ids_test = split_train_valid_test(scenes_ids)
 
     print("Dimensions of datasets :")
-    print(" * train : {}".format(X_train.shape))
-    print(" * valid : {}".format(X_valid.shape))
-    print(" * test  : {}".format(X_test.shape))
+    print(" * train : {}".format(X_train[PERSONS[0]].shape))
+    print(" * valid : {}".format(X_valid[PERSONS[0]].shape))
+    print(" * test  : {}".format(X_test[PERSONS[0]].shape))
 
     # =================================================================
     #                      TRAIN CLASSIFIERS
     # =================================================================
 
-    test_results = np.zeros((X_test.shape[0], 2*len(POSSIBLE_LOCUTORS)))
+    test_results = np.zeros((X_test[POSSIBLE_LOCUTORS[0]].shape[0], 2*len(POSSIBLE_LOCUTORS)))
 
     # Train models for each person and print results
     for i_person, person in enumerate(POSSIBLE_LOCUTORS):
@@ -230,7 +243,7 @@ if __name__=="__main__":
         #  Train classifiers
         # -------------------
         print("\nTraining classifiers independently")
-        train_models(clfs, X_train, y_train[person], X_valid, y_valid[person], models_names=clfs_names)
+        train_models(clfs, X_train[person], y_train[person], X_valid[person], y_valid[person], models_names=clfs_names)
 
 
         # --------------------------------
@@ -239,8 +252,8 @@ if __name__=="__main__":
         print("\nEnsemble learning")
 
         # get optimal weights
-        best_weights = train_model_mix(clfs, X_valid, y_valid[person], score='logloss')
-        y_pred_proba = modelmix_predict_proba(clfs, best_weights, X_test)
+        best_weights = train_model_mix(clfs, X_valid[person], y_valid[person], score='logloss')
+        y_pred_proba = modelmix_predict_proba(clfs, best_weights, X_test[person])
         y_pred = np.argmax(y_pred_proba, axis=1)
 
         # print results
@@ -259,9 +272,9 @@ if __name__=="__main__":
         print("\nSecond layer of classifier")
 
         # concatenate predictions from 1st layer classifiers
-        X_train2 = models_predict_proba_satcked(clfs, X_train)
-        X_valid2 = models_predict_proba_satcked(clfs, X_valid)
-        X_test2 = models_predict_proba_satcked(clfs, X_test)
+        X_train2 = models_predict_proba_stacked(clfs, X_train[person])
+        X_valid2 = models_predict_proba_stacked(clfs, X_valid[person])
+        X_test2 = models_predict_proba_stacked(clfs, X_test[person])
 
         # classifier
         # parameters = {'objective': 'binary:logistic',
