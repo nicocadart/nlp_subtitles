@@ -1,4 +1,5 @@
 import csv
+import numpy as np
 from nltk import sent_tokenize
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
@@ -11,6 +12,7 @@ SCENE_ID = 3
 PERSON = 4
 SENTENCE = 5
 
+INDEX_SETS_PATH = "data/train_test_split_scenes_indices.npy"
 DATABASE_PATH  = 'data/tbbt_db.csv'
 DB_COLUMNS = ['season', 'episode', 'scene', 'scene_id', 'locutor', 'text']
 DELIMITER = '§'
@@ -27,6 +29,12 @@ def load_db():
     with open(DATABASE_PATH, "r", newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter=DELIMITER)
         return list(reader)
+
+
+def get_train_valid_test_scene_ids():
+    indexes = np.load(INDEX_SETS_PATH)
+    train_ids, valid_ids, test_ids = indexes[0], indexes[1], indexes[2]
+    return train_ids, valid_ids, test_ids
 
 
 def get_persons_scenes(db):
@@ -66,6 +74,30 @@ def get_persons_scenes(db):
     scene_ids.append(current_scene_id)
 
     return persons, text, scene_ids
+
+
+def split_train_valid_test(data):
+    # load split ids and scenes ids
+    _, _, scenes_ids = get_persons_scenes(load_db())
+    train_ids, valid_ids, test_ids = get_train_valid_test_scene_ids()
+
+    # if data is a numpy array
+    if type(data) == np.ndarray:
+        array_2d = len(data.shape) == 2
+        data_train = data[np.isin(scenes_ids, train_ids), :] if array_2d else data[np.isin(scenes_ids, train_ids)]
+        data_valid = data[np.isin(scenes_ids, valid_ids), :] if array_2d else data[np.isin(scenes_ids, valid_ids)]
+        data_test = data[np.isin(scenes_ids, test_ids), :] if array_2d else data[np.isin(scenes_ids, test_ids)]
+
+    # if data is within a dic, where each key is a locutor
+    elif type(data) == dict:
+        array_2d = len(data[list(data.keys())[0]].shape) == 2
+        data_train, data_valid, data_test = {}, {}, {}
+        for key in data.keys():
+            data_train[key] = data[key][np.isin(scenes_ids, train_ids), :] if array_2d else data[key][np.isin(scenes_ids, train_ids)]
+            data_valid[key] = data[key][np.isin(scenes_ids, valid_ids), :] if array_2d else data[key][np.isin(scenes_ids, valid_ids)]
+            data_test[key] = data[key][np.isin(scenes_ids, test_ids), :] if array_2d else data[key][np.isin(scenes_ids, test_ids)]
+
+    return  data_train, data_valid, data_test
 
 
 def load_sentences_by_person(states=PERSONS, filter=False):
