@@ -5,8 +5,7 @@ import csv
 from stanfordcorenlp import StanfordCoreNLP
 from sklearn.feature_extraction.text import CountVectorizer
 
-from parsing_toolbox import load_db, get_persons_scenes, get_train_valid_test_scene_ids, PERSONS, UNKNOWN_STATE
-from encoding import one_hot_encoding
+from parsing_toolbox import load_db, get_persons_scenes, PERSONS, UNKNOWN_STATE
 
 # CoreNLP params
 CORENLP_RAM = '3g'
@@ -253,7 +252,8 @@ def get_ne_dataset(possible_locutors=PERSONS,
                    ne_punct=True,
                    ne_interj=True,
                    return_scenes_ids=False,
-                   ne_min_df=0.02,
+                   return_vocab=False,
+                   min_df=0.02,
                    binary=False):
 
     # load named entities features
@@ -261,42 +261,41 @@ def get_ne_dataset(possible_locutors=PERSONS,
     _, _, scenes_ne_punct = load_ne_features(filter="punct")
     _, _, scenes_ne_interj = load_ne_features(filter="interj")
 
-    # constants
-    n_samples = len(scenes_ids)
-    scenes_ids = np.array(scenes_ids)
-    scenes_persons = np.array(scenes_persons)
-
     # build X : merge X_all, X_punct and X_interj
     X = {locutor: np.array([]) for locutor in possible_locutors}
+    X_vocab = {locutor: [] for locutor in possible_locutors}
 
     # convert scenes text to bag-of-words
-    vectorizer = CountVectorizer(min_df=ne_min_df, stop_words='english', max_features=None)
+    vectorizer = CountVectorizer(min_df=min_df, stop_words='english', max_features=None)
 
     # build X for all named entities : bag of words
     if ne_all:
         ne_all_strings = [" ".join(ne_list) for ne_list in scenes_ne_all]
         X_ne_all = vectorizer.fit_transform(ne_all_strings).toarray()
-        # X_ne_all_vocab = vectorizer.get_feature_names()
+        X_ne_all_vocab = vectorizer.get_feature_names()
         for locutor in possible_locutors:
             X[locutor] = np.hstack([X[locutor], X_ne_all]) if X[locutor].size else X_ne_all
+            X_vocab[locutor] = X_vocab[locutor] + X_ne_all_vocab
 
     # build X for named entities followed by punctation : bag of words
     if ne_punct:
         ne_punct_strings = [" ".join(ne_list) for ne_list in scenes_ne_punct]
         X_ne_punct = vectorizer.fit_transform(ne_punct_strings).toarray()
-        # X_ne_punct_vocab = vectorizer.get_feature_names()
+        X_ne_punct_vocab = vectorizer.get_feature_names()
         for locutor in possible_locutors:
             X[locutor] = np.hstack([X[locutor], X_ne_punct]) if X[locutor].size else X_ne_punct
+            X_vocab[locutor] = X_vocab[locutor] + X_ne_punct_vocab
 
-    # build X for named entities near interjection : bag of words
+            # build X for named entities near interjection : bag of words
     if ne_interj:
         ne_interj_strings = [" ".join(ne_list) for ne_list in scenes_ne_interj]
         X_ne_interj = vectorizer.fit_transform(ne_interj_strings).toarray()
-        # X_ne_interj_vocab = vectorizer.get_feature_names()
+        X_ne_interj_vocab = vectorizer.get_feature_names()
         for locutor in possible_locutors:
             X[locutor] = np.hstack([X[locutor], X_ne_interj]) if X[locutor].size else X_ne_interj
+            X_vocab[locutor] = X_vocab[locutor] + X_ne_interj_vocab
 
-    # convert to binary features
+            # convert to binary features
     if binary:
         for locutor in possible_locutors:
             X[locutor] = np.minimum(X[locutor], 1)
@@ -307,9 +306,15 @@ def get_ne_dataset(possible_locutors=PERSONS,
         y[locutor] = np.array([1 if locutor in persons else 0 for persons in scenes_persons])
 
     if return_scenes_ids:
-        return X, y, scenes_ids
+        if return_vocab:
+            return X, y, scenes_ids, X_vocab
+        else:
+            return X, y, scenes_ids
     else:
-        return X, y
+        if return_vocab:
+            return X, y, X_vocab
+        else:
+            return X, y
 
 
 # if called from command line, build features and print stats
