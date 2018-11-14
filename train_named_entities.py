@@ -15,15 +15,18 @@ from xgboost import XGBClassifier
 
 from parsing_toolbox import PERSONS, UNKNOWN_STATE, split_train_valid_test
 from named_entities_features import get_ne_dataset
+from vocabulary_features import get_vocab_dataset
 
 
 POSSIBLE_LOCUTORS = PERSONS #+ [UNKNOWN_STATE]
 TEST_RESULTS_PATH = "data/prediction_ne_test.csv"
 
-USE_NE_ALL = True
+USE_VOCAB = True
+USE_NE_ALL = False
 USE_NE_PUNCT = True
-USE_NE_INTERJ = True
-NE_MIN_DF = 0.03
+USE_NE_INTERJ = False
+MIN_DF = 0.02
+MAX_VOCAB_SIZE = 40
 BINARY_FEATURES = False
 
 
@@ -51,7 +54,7 @@ def train_models(models, X_train, y_train, X_valid=None, y_valid=None, models_na
                 print(' * Precision : {:.2f}%'.format(100 * precision_score(y_valid, y_pred)))
                 print(' * Recall    : {:.2f}%'.format(100 * recall_score(y_valid, y_pred)))
                 print(' * Accuracy  : {:.2f}%'.format(100 * accuracy_score(y_valid, y_pred)))
-                print(' * Logloss   : {:.3f}'.format(log_loss(y_valid, y_pred_p)))
+                # print(' * Logloss   : {:.3f}'.format(log_loss(y_valid, y_pred_p)))
 
 
 def models_predict_proba(models, X):
@@ -132,18 +135,43 @@ if __name__=="__main__":
     #                         LOAD DATASET
     # =================================================================
 
-    X, y, scenes_ids = get_ne_dataset(possible_locutors=POSSIBLE_LOCUTORS,
-                                      ne_all=USE_NE_ALL,
-                                      ne_punct=USE_NE_PUNCT,
-                                      ne_interj=USE_NE_INTERJ,
-                                      ne_min_df=NE_MIN_DF,
-                                      binary=BINARY_FEATURES,
-                                      return_scenes_ids=True)
+    # init X
+    X = {locutor: np.array([]) for locutor in POSSIBLE_LOCUTORS}
+    X_map = {locutor: [] for locutor in POSSIBLE_LOCUTORS}
+
+    # features based on whole vocabulary and best discriminating words
+    if USE_VOCAB:
+        X_vocab, y, scenes_ids, X_vocab_map = get_vocab_dataset(possible_locutors=POSSIBLE_LOCUTORS,
+                                                                min_df=MIN_DF,
+                                                                max_features=MAX_VOCAB_SIZE,
+                                                                binary=BINARY_FEATURES,
+                                                                return_scenes_ids=True,
+                                                                return_vocab=True)
+        for locutor in POSSIBLE_LOCUTORS:
+            X[locutor] = np.hstack([X[locutor], X_vocab[locutor]]) if X[locutor].size else X_vocab[locutor]
+            X_map[locutor] = X_map[locutor] + X_vocab_map[locutor]
+
+    # features based on named entities
+    if USE_NE_ALL or USE_NE_PUNCT or USE_NE_INTERJ:
+        X_ne, y, scenes_ids, X_ne_map = get_ne_dataset(possible_locutors=POSSIBLE_LOCUTORS,
+                                                       ne_all=USE_NE_ALL,
+                                                       ne_punct=USE_NE_PUNCT,
+                                                       ne_interj=USE_NE_INTERJ,
+                                                       min_df=MIN_DF,
+                                                       binary=BINARY_FEATURES,
+                                                       return_scenes_ids=True,
+                                                       return_vocab=True)
+        for locutor in POSSIBLE_LOCUTORS:
+            X[locutor] = np.hstack([X[locutor], X_ne[locutor]]) if X[locutor].size else X_ne[locutor]
+            X_map[locutor] = X_map[locutor] + X_ne_map[locutor]
+
+    # separate train, valid and test sets using fixed ids
     X_train, X_valid, X_test = split_train_valid_test(X)
     y_train, y_valid, y_test = split_train_valid_test(y)
-    ids_train, ids_valid, ids_test = split_train_valid_test(scenes_ids)
+    ids_train, ids_valid, ids_test = split_train_valid_test(np.array(scenes_ids))
 
-    print("Dimensions of datasets :")
+    # display dimensions of datasets
+    print("\nDimensions of datasets :")
     print(" * train : {}".format(X_train[PERSONS[0]].shape))
     print(" * valid : {}".format(X_valid[PERSONS[0]].shape))
     print(" * test  : {}".format(X_test[PERSONS[0]].shape))
@@ -176,10 +204,10 @@ if __name__=="__main__":
         # clfs_names.append('SVM rbf')
         # clfs.append(SVC(kernel='rbf', C=1, probability=True))
 
-        clfs_names.append('LogisticRegression')
-        parameters = {'penalty': 'l2',
-                      'C': 0.1}
-        clfs.append(LogisticRegression(**parameters))
+        # clfs_names.append('LogisticRegression')
+        # parameters = {'penalty': 'l2',
+        #               'C': 0.1}
+        # clfs.append(LogisticRegression(**parameters))
 
         # clfs_names.append('RandomForestClassifier 1')
         # parameters = {'min_samples_split': 2,
