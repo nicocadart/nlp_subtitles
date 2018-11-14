@@ -13,15 +13,22 @@ from sklearn.model_selection import GridSearchCV
 
 from parsing_toolbox import PERSONS, UNKNOWN_STATE
 from named_entities_toolbox import get_train_test_ne_persons_dataset
+from train_vocabulary import get_train_test_vocabulary_dataset
 
+POSSIBLE_LOCUTORS = PERSONS + [UNKNOWN_STATE]
+DATASET = 'vocabulary'  # 'vocabulary' or 'named_entities'
 
+# params for vocabulary dataset
+MIN_DF = 0.02
+
+# params for named entities dataset
 NE_MIN_COUNT = 25
 NE_ONCE = False
-POSSIBLE_LOCUTORS = PERSONS + [UNKNOWN_STATE]
 
+# params for gridsearch
 N_CROSS_VAL = 3
 N_JOBS = 7
-CSV_DIR = 'gridsearch_results'
+CSV_DIR = 'gridsearch_results_vocab'
 
 
 if __name__ == "__main__":
@@ -31,8 +38,13 @@ if __name__ == "__main__":
     # =================================================================
 
     # load dataset
-    ne_dataset = get_train_test_ne_persons_dataset(POSSIBLE_LOCUTORS, ne_min_count=NE_MIN_COUNT, once=NE_ONCE)
-    X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = ne_dataset
+    if DATASET == 'vocabulary':
+        vocab_dataset = get_train_test_vocabulary_dataset(POSSIBLE_LOCUTORS, min_df=MIN_DF)
+        X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = vocab_dataset
+
+    elif DATASET == 'named_entities':
+        ne_dataset = get_train_test_ne_persons_dataset(POSSIBLE_LOCUTORS, ne_min_count=NE_MIN_COUNT, once=NE_ONCE)
+        X_train, y_train, ids_train, X_valid, y_valid, ids_valid, X_test, y_test, ids_test = ne_dataset
 
     print("Dimensions of datasets :")
     print(" * train : {}".format(X_train.shape))
