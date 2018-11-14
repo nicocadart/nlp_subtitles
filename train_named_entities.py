@@ -10,7 +10,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import confusion_matrix, accuracy_score, log_loss
+from sklearn.metrics import confusion_matrix, accuracy_score, log_loss, recall_score, precision_score
 from xgboost import XGBClassifier
 
 from parsing_toolbox import PERSONS, UNKNOWN_STATE, split_train_valid_test
@@ -46,8 +46,12 @@ def train_models(models, X_train, y_train, X_valid=None, y_valid=None, models_na
             model.fit(X_train, y_train)
 
             if verbose and X_valid.any() and y_valid.any():
-                print(' * Accuracy : {:.2f}%'.format(100*model.score(X_valid, y_valid)))
-                print(' * Logloss  : {:.3f}'.format(log_loss(y_valid, model.predict_proba(X_valid))))
+                y_pred_p = model.predict_proba(X_valid)
+                y_pred = model.predict(X_valid)
+                print(' * Precision : {:.2f}%'.format(100 * precision_score(y_valid, y_pred)))
+                print(' * Recall    : {:.2f}%'.format(100 * recall_score(y_valid, y_pred)))
+                print(' * Accuracy  : {:.2f}%'.format(100 * accuracy_score(y_valid, y_pred)))
+                print(' * Logloss   : {:.3f}'.format(log_loss(y_valid, y_pred_p)))
 
 
 def models_predict_proba(models, X):
@@ -249,32 +253,32 @@ if __name__=="__main__":
         # --------------------------------
         #  Find ensamble learning weights
         # --------------------------------
-        print("\nEnsemble learning")
-
-        # get optimal weights
-        best_weights = train_model_mix(clfs, X_valid[person], y_valid[person], score='logloss')
-        y_pred_proba = modelmix_predict_proba(clfs, best_weights, X_test[person])
-        y_pred = np.argmax(y_pred_proba, axis=1)
-
-        # print results
-        print(" * Best Weights  : {}".format(np.round(best_weights, 3)))
-        print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
-        print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
-        print("{}".format(confusion_matrix(y_test[person], y_pred)))
+        # print("\nEnsemble learning")
+        #
+        # # get optimal weights
+        # best_weights = train_model_mix(clfs, X_valid[person], y_valid[person], score='logloss')
+        # y_pred_proba = modelmix_predict_proba(clfs, best_weights, X_test[person])
+        # y_pred = np.argmax(y_pred_proba, axis=1)
+        #
+        # # print results
+        # print(" * Best Weights  : {}".format(np.round(best_weights, 3)))
+        # print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
+        # print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
+        # print("{}".format(confusion_matrix(y_test[person], y_pred)))
 
         # save test results
         test_results[:, i_person] = y_test[person]
-        test_results[:, len(POSSIBLE_LOCUTORS)+i_person] = y_pred_proba[:, 1]
+        test_results[:, len(POSSIBLE_LOCUTORS)+i_person] = clfs[1].predict_proba(X_test[person])[:, 1]
 
         # -------------------------
         #  Second layer classifier
         # -------------------------
-        print("\nSecond layer of classifier")
-
-        # concatenate predictions from 1st layer classifiers
-        X_train2 = models_predict_proba_stacked(clfs, X_train[person])
-        X_valid2 = models_predict_proba_stacked(clfs, X_valid[person])
-        X_test2 = models_predict_proba_stacked(clfs, X_test[person])
+        # print("\nSecond layer of classifier")
+        #
+        # # concatenate predictions from 1st layer classifiers
+        # X_train2 = models_predict_proba_stacked(clfs, X_train[person])
+        # X_valid2 = models_predict_proba_stacked(clfs, X_valid[person])
+        # X_test2 = models_predict_proba_stacked(clfs, X_test[person])
 
         # classifier
         # parameters = {'objective': 'binary:logistic',
@@ -288,20 +292,20 @@ if __name__=="__main__":
         #               'n_jobs': -1}
         # final_model = XGBClassifier(**parameters)
 
-        parameters = {'n_estimators': 200,
-                      'max_depth': 9,
-                      'min_samples_split': 2}
-        final_model = RandomForestClassifier(**parameters)
-
-        # train on dataset and test predictions
-        final_model.fit(X_train2, y_train[person])
-        y_pred_proba = final_model.predict_proba(X_test2)
-        y_pred = np.argmax(y_pred_proba, axis=1)
-
-        # print results
-        print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
-        print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
-        print("{}".format(confusion_matrix(y_test[person], y_pred)))
+        # parameters = {'n_estimators': 200,
+        #               'max_depth': 9,
+        #               'min_samples_split': 2}
+        # final_model = RandomForestClassifier(**parameters)
+        #
+        # # train on dataset and test predictions
+        # final_model.fit(X_train2, y_train[person])
+        # y_pred_proba = final_model.predict_proba(X_test2)
+        # y_pred = np.argmax(y_pred_proba, axis=1)
+        #
+        # # print results
+        # print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
+        # print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
+        # print("{}".format(confusion_matrix(y_test[person], y_pred)))
 
 
     # save results in csv
