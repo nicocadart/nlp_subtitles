@@ -1,5 +1,15 @@
 # nlp_subtitles
 
+## Presence of locutors in the corpus
+```
+Sheldon: 60.64%
+Raj: 35.87%
+Howard: 40.60%
+Unknown: 61.95%
+Leonard: 54.82%
+Penny: 42.55%
+```
+
 ## Features selection
 
 ### Named entities
