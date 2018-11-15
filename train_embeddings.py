@@ -4,8 +4,11 @@ from keras.utils import to_categorical
 from sklearn.ensemble import RandomForestClassifier
 
 from parsing_toolbox import load_sentences_by_person, PERSONS, UNKNOWN_STATE
-from embeddings_toolbox import tokenize_corpus, compute_embedding_weights, train_model, test_model
+from embeddings_toolbox import tokenize_corpus, compute_embedding_weights
+from embeddings_toolbox import train_model, test_model
 from embeddings_toolbox import create_simple_model, create_conv_model
+from embeddings_toolbox import return_embeddings
+
 
 
 ################################
@@ -23,8 +26,8 @@ OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
 # Size of embedding space
 EMBEDDING_DIM = 100
 TRAIN_VALID_TEST_RATIO = (0.8, 0.1, 0.1)
-RANDOM_SPLIT = True
-MAXLEN = 100  # We will cut sentence after 200 words (max is 202, mean is 60))
+RANDOM_SPLIT = True # Use randomizer to separate the corpus, or load specific indices
+MAXLEN = 50  # We will cut sentence after x words (max is 202, mean is 60))
 MAX_WORDS = 1000  # We will only consider the top x words in the dataset
 
 TRAIN = False # Launch a training on the data. If false, load latest trained model
@@ -41,6 +44,7 @@ sentences, id_scene, labels = load_sentences_by_person(states=PERSONS)
 
 sequences, word_index = tokenize_corpus(sentences, num_words=MAX_WORDS)
 
+# Data structured by sentence, encoded with bags-of-word
 data = pad_sequences(sequences, maxlen=MAXLEN)
 
 labels = np.asarray(labels)
@@ -97,25 +101,21 @@ print('TRAIN SHAPE:', x_train.shape, y_train.shape)
 print('VAL SHAPE:', x_val.shape, y_val.shape)
 print('TEST SHAPE:', x_test.shape, y_test.shape)
 
-############################################
-######## LOAD PRE-TRAINED EMBEDDINGS OR...
-
-# From Glove pre-trained embedding
-embedding_matrix = compute_embedding_weights(GLOVE_DIR, EMBEDDING_DIM, MAX_WORDS, word_index)
-
-# # From personal train on our classification model
-# embedding_matrix = np.load(EMBEDD_PATH)
-
 
 ############################################
-######## ... LEARN IT
+######## LEARN EMBEDDINGS
 
 if TRAIN:
+
+    # If we want to load pre-trained weights:
+
+    # # From Glove pre-trained embedding
+    embedding_matrix = compute_embedding_weights(GLOVE_DIR, EMBEDDING_DIM, MAX_WORDS, word_index)
 
     model = create_simple_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, n_classes)
     # model = create_conv_model(MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix, n_classes)
 
-    # Train Model
+    # Train embeddings model and save it at EMBEDD_PATH
     train_model(model, x_train, y_train, x_val, y_val, epochs=10)
 
     ############################################
@@ -126,16 +126,30 @@ if TRAIN:
                loadpath=None,
                savepath=OUTPUT_PREDICTIONS_PATH)
 
+##################################################
+######## RE-LOAD EMBEDDINGS WEIGHTS TO EMBEDD DATA
+
+# From Glove pre-trained embedding
+embedding_matrix = compute_embedding_weights(GLOVE_DIR, EMBEDDING_DIM, MAX_WORDS, word_index)
+
+# From training on this specific dataset only (beware of using correct dimension)
+# embedding_matrix = np.load(EMBEDD_PATH)
+
+
 ############################################
-######## TRAIN A CLASSIFICATION MODEL (selected by gridsearch_embeddings.py)
+######## TRAIN A CLASSIFICATION MODEL
 
+# Compute embeddings on the data (from the embedding weights loaded before)
+x_train = return_embeddings(x_train, MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix)
+x_test = return_embeddings(x_test, MAX_WORDS, EMBEDDING_DIM, MAXLEN, embedding_matrix)
 
+# Train a classification model (selected through gridsearch in gridsearch_embeddings)
 model_classif = RandomForestClassifier(n_estimators=150, max_depth=10,
                                        min_samples_split=2, criterion='gini')
 
-print(x_train)
 model_classif.fit(x_train, y_train)
 
+# Test the model, and save the prediction probabilities in OUTPUT_PREDICTIONS_PATH (if specified)
 test_model(model_classif, x_test, y_test, id_test, n_classes, states=STATES,
            threshold_prediction=0.02,
            loadpath=None,

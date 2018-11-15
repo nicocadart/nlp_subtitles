@@ -280,8 +280,11 @@ def test_model(model, x_test, y_test, id_test, n_classes, states,
     print('ACCURACY')
     for character in range(n_classes):
         m_confusion = confusion_per_character[character, :, :]
-        print('{}: {:.4f}\n Confusion matrix: {}'.format(states[character],
-                                                         (m_confusion[0, 0]+\
-                                                          m_confusion[1, 1])/m_confusion.sum(),
-                                                         m_confusion))
+        print('{}: {:.4f}\n Confusion matrix: {}\ Precision: {}, Recall: {}'.format(states[character],
+                                                                                    (m_confusion[0, 0]+\
+                                                                                     m_confusion[1, 1])/m_confusion.sum(),
+                                                                                    m_confusion,
+                                                                                    m_confusion[0, 0]/(m_confusion[0, 0]+m_confusion[0, 1]),
+                                                                                    m_confusion[0, 0]/(m_confusion[0, 0]+m_confusion[1, 0])))
+
     return confusion_per_character
