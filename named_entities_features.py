@@ -8,13 +8,14 @@ from sklearn.feature_extraction.text import CountVectorizer
 from parsing_toolbox import load_db, get_persons_scenes, PERSONS, UNKNOWN_STATE
 
 # CoreNLP params
-CORENLP_RAM = '3g'
+CORENLP_RAM = '4g'
 CORENLP_PATH = '/media/nicolas/Data/Documents/Scolarité/ENSTA/3A/AIC_UPSay/cours/TC3/stanford-corenlp-full-2018-02-27'
 
 # path to csv files where pre-computed features are stored
 PERSONS_NE_DB = "data/features_ne.csv"
 PERSONS_NE_PUNCT_DB = "data/features_ne_punct.csv"
 PERSONS_NE_INTERJ_DB = "data/features_ne_interj.csv"
+PERSONS_NE_COREF_DB = "data/features_ne_coref.csv"
 
 # categories of named entities to keep
 NAMED_ENTITIES_CATEGORIES = ['PERSON', 'ORGANIZATION', 'NATIONALITY', 'LOCATION']
@@ -23,22 +24,29 @@ NAMED_ENTITIES_CATEGORIES = ['PERSON', 'ORGANIZATION', 'NATIONALITY', 'LOCATION'
 N_SAMPLES = -1
 
 # flags
+USE_COREFS = True
 REBUILD_FEATURES = False
-COMPUTE_COREFERENCES = False
 PRINT_STATS_ON_FEATURES = True
 
 
-def write_features_to_csv(csv_path, scene_ids, scene_locutors, scene_features):
+def write_features_to_csv(csv_path, scene_ids, scene_locutors, scene_features, scene_features2=None):
     with open(csv_path, "w", newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter='§')
-        for scene_id, locutors, features in zip(scene_ids, scene_locutors, scene_features):
-            features_str = "|".join(features)
-            locutors_str = "|".join(locutors)
-            writer.writerow([scene_id, locutors_str, features_str])
+        if scene_features2:
+            for scene_id, locutors, features1, features2 in zip(scene_ids, scene_locutors, scene_features, scene_features2):
+                features1_str = "|".join(features1)
+                features2_str = "|".join(features2)
+                locutors_str = "|".join(locutors)
+                writer.writerow([scene_id, locutors_str, features1_str, features2_str])
+        else:
+            for scene_id, locutors, features in zip(scene_ids, scene_locutors, scene_features):
+                features_str = "|".join(features)
+                locutors_str = "|".join(locutors)
+                writer.writerow([scene_id, locutors_str, features_str])
 
 
-def read_features_from_csv(csv_path):
-    scenes_ids, scenes_persons, scenes_features = [], [], []
+def read_features_from_csv(csv_path, has_2_features=False):
+    scenes_ids, scenes_persons, scenes_features, scenes_features2 = [], [], [], []
     with open(csv_path, "r", newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter='§')
         for row in reader:
@@ -48,7 +56,15 @@ def read_features_from_csv(csv_path):
             scenes_ids.append(scene_id)
             scenes_persons.append(locutors)
             scenes_features.append(features)
-    return scenes_ids, scenes_persons, scenes_features
+            if len(row) > 3:
+                has_2_features = True
+            if has_2_features:
+                features2 = row[3].split("|")
+                scenes_features2.append(features2)
+    if has_2_features:
+        return scenes_ids, scenes_persons, [scenes_features, scenes_features2]
+    else:
+        return scenes_ids, scenes_persons, scenes_features
 
 
 def filter_tags(tagged_tokens, categories=None, ignore_categories=('O',), replace_by=None):
@@ -100,6 +116,38 @@ def filter_ne_interj(pos_tags, named_entities, null_ne='O', neighborhood=(-2,2))
     return ne_interj
 
 
+def filter_ne_coref(corefs, named_entities,
+                    positive_coref_set={'i', 'you', 'me', 'my', 'your', 'yourself'},
+                    negative_coref_set={'he', 'she', 'his', 'her', 'him', 'himself', 'herself'}):
+    """ Return 2 lists of named entities coreferenced to the positive or the negative sets."""
+    positive_ne_coref, negative_ne_coref = [], []
+
+    # keep only coreferences with detected named entities
+    ne_corefs = []
+    for coref in corefs:
+        entities = {token[3] for token in coref}
+        if not entities.isdisjoint(set(named_entities)):
+            ne_corefs.append(coref)
+
+    # loop on each coreference
+    ne_lower = [word.lower() for word in named_entities]
+    for coref in ne_corefs:
+        references = {word.lower() for _, _, _, word in coref}
+
+        new_pos_ne_coref, new_neg_ne_coref = set(), set()
+        for i_name, name in enumerate(ne_lower):
+            if name in references:
+                if not references.isdisjoint(negative_coref_set):
+                    new_neg_ne_coref.add(named_entities[i_name])
+                if not references.isdisjoint(positive_coref_set):
+                    new_pos_ne_coref.add(named_entities[i_name])
+
+        positive_ne_coref += list(new_pos_ne_coref)
+        negative_ne_coref += list(new_neg_ne_coref)
+
+    return positive_ne_coref, negative_ne_coref
+
+
 def build_ne_db(n_samples=N_SAMPLES):
     """
     @brief: build a list of episodes files, and create a database of the named entities in each scene,
@@ -120,6 +168,9 @@ def build_ne_db(n_samples=N_SAMPLES):
     ne_pred_all = []
     ne_pred_punct = []
     ne_pred_interj = []
+    if USE_COREFS:
+        ne_pred_coref_pos = []
+        ne_pred_coref_neg = []
 
     for i_scene, (persons, text) in enumerate(zip(scenes_persons[:n_samples], scenes_text[:n_samples])):
 
@@ -129,19 +180,8 @@ def build_ne_db(n_samples=N_SAMPLES):
         # print(text)
 
         # run tagging on text
-        # tokens = nlp.word_tokenize(text)
         pos_tags = nlp.pos_tag(text)
         named_entities = nlp.ner(text)
-        # coreferences = nlp.coref(text)
-
-        # # filter coreferences
-        # coreferences_filtered = []
-        # for coref in coreferences:
-        #     entities = {token[3] for token in coref}
-        #     if not entities.isdisjoint(PERSONS):
-        #         coreferences_filtered.append(coref)
-        # {'I', 'you', 'me', 'my', 'your'}
-        # print(coreferences_filtered)
 
         # keep only named entities from several categories, and replace the others by 'O'
         ne_all_replaced = filter_tags(named_entities,
@@ -149,7 +189,8 @@ def build_ne_db(n_samples=N_SAMPLES):
                                       replace_by='O')
         ne_all = filter_tags(named_entities,
                              categories=NAMED_ENTITIES_CATEGORIES)
-        # print("All named entities :\n{}".format([word for word, _ in ne_all]))
+        ne_all = [word for word, _ in ne_all]
+        # print("All named entities :\n{}".format(ne_all))
 
         # named entities followed by punctation
         ne_punct = filter_ne_punct(pos_tags, ne_all_replaced, null_ne='O', punct_tags=[',', '.'])
@@ -160,16 +201,23 @@ def build_ne_db(n_samples=N_SAMPLES):
         # print("Named entities near interjection :\n{}".format(ne_interj))
 
         # store predictions
-        ne_pred_all.append([word for word, _ in ne_all])
+        ne_pred_all.append(ne_all)
         ne_pred_punct.append(ne_punct)
         ne_pred_interj.append(ne_interj)
 
-        # # print('Tokenize:', nlp.word_tokenize(text))
-        # print('Part of Speech:', filter_tags(pos_tags, categories=POS_TAGS_CATEGORIES))
-        # print('Named Entities:', )
-        # # print('Constituency Parsing:', nlp.parse(sentence))
-        # # print('Dependency Parsing:', nlp.dependency_parse(sentence))
-        # print('Coreferences:', nlp.coref(text))
+        # named entities linked to coreferences
+        if USE_COREFS:
+            if ne_all:
+                corefs = nlp.coref(text)
+                ne_pos_coref, ne_neg_coref = filter_ne_coref(corefs, ne_all)
+            else:
+                ne_pos_coref, ne_neg_coref = [], []
+            ne_pred_coref_pos.append(ne_pos_coref)
+            ne_pred_coref_neg.append(ne_neg_coref)
+
+            # print('Named entities linked to coreferences :')
+            # print(' positive : {}'.format(ne_pos_coref))
+            # print(' negative : {}'.format(ne_neg_coref))
 
     # Do not forget to close! The backend server will consume a lot memory.
     nlp.close()
@@ -181,6 +229,9 @@ def build_ne_db(n_samples=N_SAMPLES):
     write_features_to_csv(PERSONS_NE_PUNCT_DB, scene_ids, scenes_persons, ne_pred_punct)
     print("Saving named entities near interjection dataset to file \'{}\'".format(PERSONS_NE_INTERJ_DB))
     write_features_to_csv(PERSONS_NE_INTERJ_DB, scene_ids, scenes_persons, ne_pred_interj)
+    if USE_COREFS:
+        print("Saving named entities linked to coreferences to dataset to file \'{}\'".format(PERSONS_NE_COREF_DB))
+        write_features_to_csv(PERSONS_NE_COREF_DB, scene_ids, scenes_persons, ne_pred_coref_pos, ne_pred_coref_neg)
 
 
 def load_ne_features(filter='all', rebuild=False):
@@ -198,6 +249,8 @@ def load_ne_features(filter='all', rebuild=False):
         db_file_path = PERSONS_NE_PUNCT_DB
     elif filter == "interj":
         db_file_path = PERSONS_NE_INTERJ_DB
+    elif filter == "coref":
+        db_file_path = PERSONS_NE_COREF_DB
     else:
         raise ValueError("Unknown 'filter' value. Must be in {'all', 'punct', 'interj'}")
 
@@ -211,6 +264,8 @@ def load_ne_features(filter='all', rebuild=False):
     if isfile(db_file_path):
         print("Loading named entities dataset from file \'{}\'".format(db_file_path))
         scenes_ids, scenes_persons, scenes_ne = read_features_from_csv(db_file_path)
+        # filter locutors
+        scenes_persons = [list({person if person in PERSONS else UNKNOWN_STATE for person in persons}) for persons in scenes_persons]
 
     return scenes_ids, scenes_persons, scenes_ne
 
@@ -251,15 +306,14 @@ def get_ne_dataset(possible_locutors=PERSONS,
                    ne_all=True,
                    ne_punct=True,
                    ne_interj=True,
+                   ne_coref=False,
                    return_scenes_ids=False,
                    return_vocab=False,
                    min_df=0.02,
                    binary=False):
 
-    # load named entities features
-    scenes_ids, scenes_persons, scenes_ne_all = load_ne_features(filter="all")
-    _, _, scenes_ne_punct = load_ne_features(filter="punct")
-    _, _, scenes_ne_interj = load_ne_features(filter="interj")
+    if not (ne_all or ne_punct or ne_interj or ne_coref):
+        raise ValueError("At least one feature type is needed.")
 
     # build X : merge X_all, X_punct and X_interj
     X = {locutor: np.array([]) for locutor in possible_locutors}
@@ -270,6 +324,7 @@ def get_ne_dataset(possible_locutors=PERSONS,
 
     # build X for all named entities : bag of words
     if ne_all:
+        scenes_ids, scenes_persons, scenes_ne_all = load_ne_features(filter="all")
         ne_all_strings = [" ".join(ne_list) for ne_list in scenes_ne_all]
         X_ne_all = vectorizer.fit_transform(ne_all_strings).toarray()
         X_ne_all_vocab = vectorizer.get_feature_names()
@@ -279,6 +334,7 @@ def get_ne_dataset(possible_locutors=PERSONS,
 
     # build X for named entities followed by punctation : bag of words
     if ne_punct:
+        scenes_ids, scenes_persons, scenes_ne_punct = load_ne_features(filter="punct")
         ne_punct_strings = [" ".join(ne_list) for ne_list in scenes_ne_punct]
         X_ne_punct = vectorizer.fit_transform(ne_punct_strings).toarray()
         X_ne_punct_vocab = vectorizer.get_feature_names()
@@ -286,8 +342,9 @@ def get_ne_dataset(possible_locutors=PERSONS,
             X[locutor] = np.hstack([X[locutor], X_ne_punct]) if X[locutor].size else X_ne_punct
             X_vocab[locutor] = X_vocab[locutor] + X_ne_punct_vocab
 
-            # build X for named entities near interjection : bag of words
+    # build X for named entities near interjection : bag of words
     if ne_interj:
+        scenes_ids, scenes_persons, scenes_ne_interj = load_ne_features(filter="interj")
         ne_interj_strings = [" ".join(ne_list) for ne_list in scenes_ne_interj]
         X_ne_interj = vectorizer.fit_transform(ne_interj_strings).toarray()
         X_ne_interj_vocab = vectorizer.get_feature_names()
@@ -295,7 +352,18 @@ def get_ne_dataset(possible_locutors=PERSONS,
             X[locutor] = np.hstack([X[locutor], X_ne_interj]) if X[locutor].size else X_ne_interj
             X_vocab[locutor] = X_vocab[locutor] + X_ne_interj_vocab
 
-            # convert to binary features
+    # build X for named entities linked to present/absent person : one hot encoding
+    if ne_coref:
+        scenes_ids, scenes_persons, [scenes_ne_coref_pos, scenes_ne_coref_neg] = load_ne_features(filter="coref")
+        for locutor in possible_locutors:
+            ne_coref_pos = [1 if locutor in coref else 0 for coref in scenes_ne_coref_pos]
+            ne_coref_neg = [1 if locutor in coref else 0 for coref in scenes_ne_coref_neg]
+            # X_ne_coref = np.array([ne_coref_pos, ne_coref_neg]).T
+            X_ne_coref = np.array([ne_coref_pos]).T
+            X[locutor] = np.hstack([X[locutor], X_ne_coref]) if X[locutor].size else X_ne_coref
+            X_vocab[locutor] = X_vocab[locutor] + [locutor, locutor]
+
+    # convert to binary features
     if binary:
         for locutor in possible_locutors:
             X[locutor] = np.minimum(X[locutor], 1)
@@ -324,6 +392,8 @@ if __name__ == "__main__" :
     scenes_ids, scenes_persons, ne_pred_all = load_ne_features(filter="all", rebuild=REBUILD_FEATURES)
     _, _, ne_pred_punct = load_ne_features(filter="punct")
     _, _, ne_pred_interj = load_ne_features(filter="interj")
+    if USE_COREFS:
+        _, scenes_persons, [ne_pred_coref_pos, ne_pred_coref_neg] = load_ne_features(filter="coref")
 
     # print predictions stats
     if PRINT_STATS_ON_FEATURES:
@@ -344,6 +414,18 @@ if __name__ == "__main__" :
 
         print("\nNamed entities with interjection in neighborhood :")
         accuracy, precision, recall = compute_detections_stats(scenes_persons, ne_pred_interj)
+        print(" * precision = {:.3f}".format(precision))
+        print(" * recall    = {:.3f}".format(recall))
+        print(" * accuracy  = {:.3f}".format(accuracy))
+
+        print("\nNamed entities with positive coreferences :")
+        accuracy, precision, recall = compute_detections_stats(scenes_persons, ne_pred_coref_pos)
+        print(" * precision = {:.3f}".format(precision))
+        print(" * recall    = {:.3f}".format(recall))
+        print(" * accuracy  = {:.3f}".format(accuracy))
+
+        print("\nNamed entities with negative coreferences :")
+        accuracy, precision, recall = compute_detections_stats(scenes_persons, ne_pred_coref_neg)
         print(" * precision = {:.3f}".format(precision))
         print(" * recall    = {:.3f}".format(recall))
         print(" * accuracy  = {:.3f}".format(accuracy))

@@ -25,6 +25,7 @@ USE_VOCAB = True
 USE_NE_ALL = False
 USE_NE_PUNCT = True
 USE_NE_INTERJ = True
+USE_NE_COREF = False
 MIN_DF = 0.02
 MAX_VOCAB_SIZE = 40
 BINARY_FEATURES = False
@@ -135,6 +136,8 @@ if __name__=="__main__":
     #                         LOAD DATASET
     # =================================================================
 
+    print("\nLoading and preparing dataset for classification...")
+
     # init X
     X = {locutor: np.array([]) for locutor in POSSIBLE_LOCUTORS}
     X_map = {locutor: [] for locutor in POSSIBLE_LOCUTORS}
@@ -152,11 +155,12 @@ if __name__=="__main__":
             X_map[locutor] = X_map[locutor] + X_vocab_map[locutor]
 
     # features based on named entities
-    if USE_NE_ALL or USE_NE_PUNCT or USE_NE_INTERJ:
+    if USE_NE_ALL or USE_NE_PUNCT or USE_NE_INTERJ or USE_NE_COREF:
         X_ne, y, scenes_ids, X_ne_map = get_ne_dataset(possible_locutors=POSSIBLE_LOCUTORS,
                                                        ne_all=USE_NE_ALL,
                                                        ne_punct=USE_NE_PUNCT,
                                                        ne_interj=USE_NE_INTERJ,
+                                                       ne_coref=USE_NE_COREF,
                                                        min_df=MIN_DF,
                                                        binary=BINARY_FEATURES,
                                                        return_scenes_ids=True,

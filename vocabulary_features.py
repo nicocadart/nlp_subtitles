@@ -15,12 +15,14 @@ def get_vocab_dataset(possible_locutors=PERSONS,
 
     # load scenes and persons dataset
     scenes_persons, scenes_text, scenes_ids = get_persons_scenes(load_db())
+    # filter locutors
+    scenes_persons = [list({person if person in PERSONS else UNKNOWN_STATE for person in persons}) for persons in
+                      scenes_persons]
 
     # build y : one hot encoded persons
     y = {}
     for locutor in possible_locutors:
         y[locutor] = np.array([1 if locutor in persons else 0 for persons in scenes_persons])
-
 
     # convert scenes text to bag-of-words
     vectorizer = CountVectorizer(min_df=min_df, stop_words='english', max_features=None)
