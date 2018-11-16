@@ -269,22 +269,24 @@ def test_model(model, x_test, y_test, id_test, n_classes, states,
 
             for character in range(n_classes):
                 if character in truth_class and character in predict_class:
-                    confusion_per_character[character, 0, 0] += 1
-                elif character in truth_class and character not in predict_class:
-                    confusion_per_character[character, 0, 1] += 1
-                elif character not in truth_class and character in predict_class:
-                    confusion_per_character[character, 1, 0] += 1
-                elif character not in truth_class and character not in predict_class:
                     confusion_per_character[character, 1, 1] += 1
+                elif character in truth_class and character not in predict_class:
+                    confusion_per_character[character, 1, 0] += 1
+                elif character not in truth_class and character in predict_class:
+                    confusion_per_character[character, 0, 1] += 1
+                elif character not in truth_class and character not in predict_class:
+                    confusion_per_character[character, 0, 0] += 1
 
-    print('ACCURACY')
+    print('RESULTS')
     for character in range(n_classes):
         m_confusion = confusion_per_character[character, :, :]
-        print('{}: {:.4f}\n Confusion matrix: {}\ Precision: {}, Recall: {}'.format(states[character],
-                                                                                    (m_confusion[0, 0]+\
-                                                                                     m_confusion[1, 1])/m_confusion.sum(),
-                                                                                    m_confusion,
-                                                                                    m_confusion[0, 0]/(m_confusion[0, 0]+m_confusion[0, 1]),
-                                                                                    m_confusion[0, 0]/(m_confusion[0, 0]+m_confusion[1, 0])))
+        accuracy = (m_confusion[0, 0] + m_confusion[1, 1])/ m_confusion.sum()
+        precision = m_confusion[1, 1] / (m_confusion[1, 1] + m_confusion[0, 1])
+        recall = m_confusion[1, 1] / (m_confusion[1, 1] + m_confusion[1, 0])
+        print('{}'.format(states[character]))
+        print(' * accuracy  : {:.3f}'.format(accuracy))
+        print(' * precision : {:.3f}'.format(precision))
+        print(' * recall    : {:.3f}'.format(recall))
+        print(m_confusion)
 
     return confusion_per_character

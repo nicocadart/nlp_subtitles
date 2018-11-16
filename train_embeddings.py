@@ -26,7 +26,7 @@ OUTPUT_PREDICTIONS_PATH = 'data/prediction_embeddings_test.csv'
 # Size of embedding space
 EMBEDDING_DIM = 100
 TRAIN_VALID_TEST_RATIO = (0.8, 0.1, 0.1)
-RANDOM_SPLIT = True # Use randomizer to separate the corpus, or load specific indices
+RANDOM_SPLIT = False # Use randomizer to separate the corpus, or load specific indices
 MAXLEN = 50  # We will cut sentence after x words (max is 202, mean is 60))
 MAX_WORDS = 1000  # We will only consider the top x words in the dataset
 
