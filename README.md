@@ -1,122 +1,16 @@
-# nlp_subtitles
+# Détection des personnages présents dans les scènes d'une série
 
-## Presence of locutors in the corpus
-```
-Sheldon: 60.64%
-Raj: 35.87%
-Howard: 40.60%
-Unknown: 61.95%
-Leonard: 54.82%
-Penny: 42.55%
-```
+Projet réalisé dans le cadre du cours TC3 du Master 2 AIC à l'Université Paris-Sud.
 
-## Features selection
+Auteurs : Nicolas Cadart et Benoit Sarthou
 
-### Named entities
+Date : Novembre 2018
 
-#### Results without learning
+## Utilisation
 
-```
-Detections of real locutors by named entities detection (2665 samples used) :
+Les transcripts des sous-titres de la série "The Big Bang Theory" sont nécessaires.
 
-All named entities :
- * precision = 0.779
- * recall    = 0.398
- * accuracy  = 0.665
-
-Named entities followed by punctuation :
- * precision = 0.878
- * recall    = 0.332
- * accuracy  = 0.665
-
-Named entities with interjection in neighborhood :
- * precision = 0.867
- * recall    = 0.079
- * accuracy  = 0.563
-```
- 
- 
- #### Results with learning
-
-``` 
-Loading named entities dataset from file 'data/features_ne.csv'
-Loading named entities dataset from file 'data/features_ne_punct.csv'
-Loading named entities dataset from file 'data/features_ne_interj.csv'
-
-Dimensions of datasets :
- * train : (1865, 57)
- * valid : (400, 57)
- * test  : (400, 57)
-
-==================================================
-                     SHELDON                      
-==================================================
-
-Training classifiers independently
-Training model RandomForestClassifier 2
- * Precision : 81.74%
- * Recall    : 85.65%
- * Accuracy  : 80.75%
-Training model XGBoost 1
- * Precision : 81.17%
- * Recall    : 84.35%
- * Accuracy  : 79.75%
-
-==================================================
-                     LEONARD                      
-==================================================
-
-Training classifiers independently
-Training model RandomForestClassifier 2
- * Precision : 73.99%
- * Recall    : 59.26%
- * Accuracy  : 66.75%
-Training model XGBoost 1
- * Precision : 73.45%
- * Recall    : 60.19%
- * Accuracy  : 66.75%
-
-==================================================
-                      PENNY                       
-==================================================
-
-Training classifiers independently
-Training model RandomForestClassifier 2
- * Precision : 73.50%
- * Recall    : 50.29%
- * Accuracy  : 71.00%
-Training model XGBoost 1
- * Precision : 73.79%
- * Recall    : 44.44%
- * Accuracy  : 69.50%
-
-==================================================
-                       RAJ                        
-==================================================
-
-Training classifiers independently
-Training model RandomForestClassifier 2
- * Precision : 67.01%
- * Recall    : 50.78%
- * Accuracy  : 76.25%
-Training model XGBoost 1
- * Precision : 67.05%
- * Recall    : 46.09%
- * Accuracy  : 75.50%
-
-==================================================
-                      HOWARD                      
-==================================================
-
-Training classifiers independently
-Training model RandomForestClassifier 2
- * Precision : 70.63%
- * Recall    : 60.14%
- * Accuracy  : 76.00%
-Training model XGBoost 1
- * Precision : 69.77%
- * Recall    : 60.81%
- * Accuracy  : 75.75%
-
-Tests results saved to 'data/prediction_ne_test.csv'
-```
+1. Créer un dossier `data` dans ce répertoire.
+1. Générer le jeu de données : `python3 create_database.py`, puis `python3 create_train_test_scenes_split.py` 
+2. Pré-calculer les features sur les entités nommées : `python3 named_entities_features.py`. Attention, l'exécution nécessite au moins 4GB de RAM et peut prendre au delà d'1h.
+3. Lancer l'entraînement des modèles et la prédiction sur le jeu de test : `python3 train_models_and_predict_locutors.py`

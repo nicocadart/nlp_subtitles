@@ -18,8 +18,8 @@ from named_entities_features import get_ne_dataset
 from vocabulary_features import get_vocab_dataset
 
 
-POSSIBLE_LOCUTORS = PERSONS #+ [UNKNOWN_STATE]
-TEST_RESULTS_PATH = "data/prediction_ne_test.csv"
+POSSIBLE_LOCUTORS = PERSONS + [UNKNOWN_STATE]
+TEST_RESULTS_PATH = "data/locutors_predictions.csv"
 
 USE_VOCAB = True
 USE_NE_ALL = False
@@ -338,7 +338,13 @@ if __name__=="__main__":
         # print(" * Test accuracy : {:.2f}%".format(100*accuracy_score(y_test[person], y_pred)))
         # print(" * Test log-loss : {:.3f}".format(log_loss(y_test[person], y_pred_proba)))
         # print("{}".format(confusion_matrix(y_test[person], y_pred)))
-
+    y_test_pred = [ypred for i_locutor in range(len(POSSIBLE_LOCUTORS)) for ypred in np.where(test_results[:, len(POSSIBLE_LOCUTORS)+i_locutor] > 0.5, 1, 0)]
+    y_test_real = [yi for locutor in POSSIBLE_LOCUTORS for yi in y_test[locutor]]
+    print("\n---------------------------")
+    print("\nGlobal results on test set:")
+    print(' * Precision : {:.2f}%'.format(100 * precision_score(y_test_real, y_test_pred)))
+    print(' * Recall    : {:.2f}%'.format(100 * recall_score(y_test_real, y_test_pred)))
+    print(' * Accuracy  : {:.2f}%'.format(100 * accuracy_score(y_test_real, y_test_pred)))
 
     # save results in csv
     with open(TEST_RESULTS_PATH, "w", newline='') as csvfile:
